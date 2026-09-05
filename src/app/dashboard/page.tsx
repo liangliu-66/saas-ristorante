@@ -1,31 +1,45 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
+import { useRouter } from 'next/navigation'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-type Order = {
+interface Order {
   id: string
-  customer_name: string
-  customer_phone: string
-  total_amount: number
-  status: 'pending' | 'in_preparation' | 'completed'
   created_at: string
+  table_number: string
+  items: any[]
+  total_amount: number
+  status: 'pending' | 'preparing' | 'completed' | 'cancelled'
 }
 
 export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([])
-  const [filter, setFilter] = useState<'all' | 'pending' | 'in_preparation' | 'completed'>('all')
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  const fetchOrders = async () => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      setOrders(data as Order[])
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
     fetchOrders()
 
     const channel = supabase
-      .channel('realtime_orders')
+      .channel('orders-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
@@ -38,142 +52,102 @@ export default function Dashboard() {
     }
   }, [])
 
-  async function fetchOrders() {
-    const { data } = await supabase
-      .from('orders')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (data) setOrders(data)
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
   }
 
-  async function updateStatus(id: string, newStatus: Order['status']) {
-    await supabase.from('orders').update({ status: newStatus }).eq('id', id)
+  const updateOrderStatus = async (orderId: string, status: string) => {
+    await supabase.from('orders').update({ status }).eq('id', orderId)
     fetchOrders()
   }
-
-  async function deleteOrder(id: string) {
-    if (!confirm('Sei sicuro di voler eliminare questo ordine?')) return
-    await supabase.from('orders').delete().eq('id', id)
-    fetchOrders()
-  }
-
-  const filteredOrders = orders.filter((o) => (filter === 'all' ? true : o.status === filter))
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        
-        {/* Navigation Bar */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-800 p-4 rounded-xl border border-slate-700 gap-4">
+    <div className="min-h-screen bg-slate-900 text-white p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex justify-between items-center mb-8 border-b border-slate-800 pb-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">Dashboard Ristoratore</h1>
-            <p className="text-xs text-slate-400">Gestione in tempo reale degli ordini e del menu</p>
+            <h1 className="text-3xl font-bold">Dashboard Ordini</h1>
+            <p className="text-slate-400 text-sm">Gestione in tempo reale</p>
           </div>
-          <div className="flex gap-3">
-            <a
-              href="/dashboard"
-              className="px-4 py-2 bg-sky-600 text-white rounded-lg font-semibold text-sm shadow"
-            >
-              Ordini Live
-            </a>
-            <a
-              href="/dashboard/menu"
-              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg font-semibold text-sm transition"
-            >
-              Gestione Menu &rarr;
-            </a>
-          </div>
+          <button
+            onClick={handleLogout}
+            className="bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/30 px-4 py-2 rounded-lg text-sm transition-colors"
+          >
+            Esci (Logout)
+          </button>
         </div>
 
-        {/* Status Filters */}
-        <div className="flex gap-2 border-b border-slate-800 pb-3 overflow-x-auto">
-          {[
-            { key: 'all', label: 'Tutti' },
-            { key: 'pending', label: 'In Arrivo' },
-            { key: 'in_preparation', label: 'In Preparazione' },
-            { key: 'completed', label: 'Completati' },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key as any)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                filter === tab.key
-                  ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-750'
-              }`}
-            >
-              {tab.label} ({orders.filter((o) => (tab.key === 'all' ? true : o.status === tab.key)).length})
-            </button>
-          ))}
-        </div>
-
-        {/* Orders Grid */}
-        {filteredOrders.length === 0 ? (
-          <div className="bg-slate-800/50 rounded-xl p-12 text-center text-slate-500 border border-slate-800">
-            Nessun ordine trovato in questa sezione.
-          </div>
+        {loading ? (
+          <p className="text-slate-400">Caricamento ordini...</p>
+        ) : orders.length === 0 ? (
+          <p className="text-slate-400">Nessun ordine presente.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrders.map((order) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {orders.map((order) => (
               <div
                 key={order.id}
-                className="bg-slate-800 border border-slate-700 rounded-xl p-5 flex flex-col justify-between shadow-md"
+                className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4"
               >
-                <div className="space-y-3">
-                  <div className="flex justify-between items-start">
-                    <span className="text-xs font-mono text-slate-400">
-                      {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span
-                      className={`text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                        order.status === 'pending'
-                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                          : order.status === 'in_preparation'
-                          ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      }`}
-                    >
-                      {order.status === 'pending' ? 'In Arrivo' : order.status === 'in_preparation' ? 'In Preparazione' : 'Completato'}
-                    </span>
-                  </div>
-
+                <div className="flex justify-between items-start border-b border-slate-700 pb-3">
                   <div>
-                    <h3 className="font-bold text-lg text-white">{order.customer_name}</h3>
-                    <p className="text-sm text-slate-400">{order.customer_phone}</p>
+                    <h2 className="text-xl font-bold text-amber-500">
+                      Tavolo {order.table_number}
+                    </h2>
+                    <span className="text-xs text-slate-400">
+                      {new Date(order.created_at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
                   </div>
-
-                  <div className="pt-2 border-t border-slate-700/60 flex justify-between items-center">
-                    <span className="text-sm text-slate-400">Totale:</span>
-                    <span className="text-xl font-extrabold text-sky-400">€ {order.total_amount.toFixed(2)}</span>
-                  </div>
+                  <span
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                      order.status === 'pending'
+                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                        : order.status === 'preparing'
+                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                        : order.status === 'completed'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-slate-700 text-slate-400'
+                    }`}
+                  >
+                    {order.status}
+                  </span>
                 </div>
 
-                {/* Actions */}
-                <div className="mt-5 pt-3 border-t border-slate-700/60 flex flex-col gap-2">
-                  {order.status === 'pending' && (
-                    <button
-                      onClick={() => updateStatus(order.id, 'in_preparation')}
-                      className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 rounded-lg text-sm transition"
-                    >
-                      Accetta & Prepara
-                    </button>
-                  )}
+                <div className="space-y-2 text-sm text-slate-300">
+                  {order.items?.map((item: any, idx: number) => (
+                    <div key={idx} className="flex justify-between">
+                      <span>
+                        {item.quantity}x {item.name}
+                      </span>
+                      <span className="text-slate-400">
+                        €{(item.price * item.quantity).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
 
-                  {order.status === 'in_preparation' && (
-                    <button
-                      onClick={() => updateStatus(order.id, 'completed')}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-sm transition"
-                    >
-                      Segna Come Pronto
-                    </button>
-                  )}
+                <div className="border-t border-slate-700 pt-3 flex justify-between items-center">
+                  <span className="font-bold text-lg">
+                    Totale: €{Number(order.total_amount).toFixed(2)}
+                  </span>
+                </div>
 
+                <div className="flex gap-2 pt-2">
                   <button
-                    onClick={() => deleteOrder(order.id)}
-                    className="w-full text-xs text-rose-400 hover:text-rose-300 py-1 transition"
+                    onClick={() => updateOrderStatus(order.id, 'preparing')}
+                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-xs py-2 rounded font-medium transition-colors"
                   >
-                    Elimina Ordine
+                    In Preparazione
+                  </button>
+                  <button
+                    onClick={() => updateOrderStatus(order.id, 'completed')}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-xs py-2 rounded font-medium transition-colors"
+                  >
+                    Completato
                   </button>
                 </div>
               </div>
