@@ -1,160 +1,215 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
-interface Order {
-  id: string
-  created_at: string
-  table_number: string
-  items: any[]
-  total_amount: number
-  status: 'pending' | 'preparing' | 'completed' | 'cancelled'
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
 }
 
-export default function Dashboard() {
-  const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
-  const router = useRouter()
+export default function DashboardPage() {
+  const [restaurant, setRestaurant] = useState<any>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  // Form stato nuovo prodotto
+  const [prodName, setProdName] = useState('');
+  const [prodDesc, setProdDesc] = useState('');
+  const [prodPrice, setProdPrice] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const router = useRouter();
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  );
 
-  const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .order('created_at', { ascending: false })
+  const fetchRestaurantAndProducts = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (!error && data) {
-      setOrders(data as Order[])
+    if (!user) {
+      router.push('/login');
+      return;
     }
-    setLoading(false)
-  }
+
+    const { data: restData } = await supabase
+      .from('restaurants')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!restData) {
+      router.push('/onboarding');
+      return;
+    }
+
+    setRestaurant(restData);
+
+    // Recupera i prodotti del ristorante
+    const { data: prodData } = await supabase
+      .from('products')
+      .select('*')
+      .eq('restaurant_id', restData.id)
+      .order('created_at', { ascending: false });
+
+    if (prodData) setProducts(prodData);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    fetchOrders()
+    fetchRestaurantAndProducts();
+  }, []);
 
-    const channel = supabase
-      .channel('orders-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'orders' },
-        () => fetchOrders()
-      )
-      .subscribe()
+  // Aggiungi un piatto
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prodName || !prodPrice) return;
+    setSaving(true);
 
-    return () => {
-      supabase.removeChannel(channel)
+    const { error } = await supabase.from('products').insert([
+      {
+        restaurant_id: restaurant.id,
+        name: prodName,
+        description: prodDesc,
+        price: parseFloat(prodPrice),
+      },
+    ]);
+
+    if (!error) {
+      setProdName('');
+      setProdDesc('');
+      setProdPrice('');
+      fetchRestaurantAndProducts();
+    } else {
+      alert(`Errore nel salvataggio: ${error.message}`);
     }
-  }, [])
+    setSaving(false);
+  };
+
+  // Elimina un piatto
+  const handleDeleteProduct = async (id: string) => {
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (!error) {
+      setProducts(products.filter((p) => p.id !== id));
+    }
+  };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
-  }
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  };
 
-  const updateOrderStatus = async (orderId: string, status: string) => {
-    await supabase.from('orders').update({ status }).eq('id', orderId)
-    fetchOrders()
-  }
+  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento...</div>;
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8 border-b border-slate-800 pb-4">
+      <div className="max-w-4xl mx-auto space-y-6">
+        
+        {/* Header */}
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-6 rounded-xl border border-slate-700 gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Dashboard Ordini</h1>
-            <p className="text-slate-400 text-sm">Gestione in tempo reale</p>
+            <span className="text-xs text-amber-500 font-semibold uppercase tracking-wider">Locale Attivo</span>
+            <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
+            <p className="text-slate-400 text-xs mt-1">
+              URL Menu: <a href={`/menu/${restaurant?.slug}`} target="_blank" className="text-amber-500 hover:underline">/menu/{restaurant?.slug}</a>
+            </p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/30 px-4 py-2 rounded-lg text-sm transition-colors"
-          >
-            Esci (Logout)
-          </button>
-        </div>
 
-        {loading ? (
-          <p className="text-slate-400">Caricamento ordini...</p>
-        ) : orders.length === 0 ? (
-          <p className="text-slate-400">Nessun ordine presente.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {orders.map((order) => (
-              <div
-                key={order.id}
-                className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4"
+          <div className="flex gap-3">
+            <Link
+              href="/dashboard/settings"
+              className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              Impostazioni
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-lg border border-red-500/20 transition-colors"
+            >
+              Esci
+            </button>
+          </div>
+        </header>
+
+        {/* Form Aggiungi Piatto */}
+        <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+          <h2 className="text-lg font-bold">Aggiungi un Piatto al Menu</h2>
+          
+          <form onSubmit={handleAddProduct} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <input
+              type="text"
+              placeholder="Nome Piatto (es. Roll Salmon)"
+              value={prodName}
+              onChange={(e) => setProdName(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
+              required
+            />
+
+            <input
+              type="text"
+              placeholder="Descrizione (es. Salmone, Avocado)"
+              value={prodDesc}
+              onChange={(e) => setProdDesc(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
+            />
+
+            <div className="flex gap-2">
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Prezzo (€)"
+                value={prodPrice}
+                onChange={(e) => setProdPrice(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
+                required
+              />
+              <button
+                type="submit"
+                disabled={saving}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-4 py-3 rounded-lg transition-colors whitespace-nowrap"
               >
-                <div className="flex justify-between items-start border-b border-slate-700 pb-3">
+                {saving ? '+' : 'Aggiungi'}
+              </button>
+            </div>
+          </form>
+        </section>
+
+        {/* Lista Piatti */}
+        <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+          <h2 className="text-lg font-bold">Piatti nel Menu ({products.length})</h2>
+
+          {products.length === 0 ? (
+            <p className="text-slate-400 text-sm">Nessun piatto inserito. Usa il modulo sopra per aggiungere il primo!</p>
+          ) : (
+            <div className="divide-y divide-slate-700">
+              {products.map((item) => (
+                <div key={item.id} className="py-3 flex justify-between items-center">
                   <div>
-                    <h2 className="text-xl font-bold text-amber-500">
-                      Tavolo {order.table_number}
-                    </h2>
-                    <span className="text-xs text-slate-400">
-                      {new Date(order.created_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
+                    <h3 className="font-bold">{item.name}</h3>
+                    <p className="text-xs text-slate-400">{item.description}</p>
                   </div>
-                  <span
-                    className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                      order.status === 'pending'
-                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                        : order.status === 'preparing'
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                        : order.status === 'completed'
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : 'bg-slate-700 text-slate-400'
-                    }`}
-                  >
-                    {order.status}
-                  </span>
+                  <div className="flex items-center gap-4">
+                    <span className="font-bold text-amber-500">€{Number(item.price).toFixed(2)}</span>
+                    <button
+                      onClick={() => handleDeleteProduct(item.id)}
+                      className="text-red-400 hover:text-red-300 text-xs border border-red-500/20 bg-red-500/10 px-2 py-1 rounded"
+                    >
+                      Elimina
+                    </button>
+                  </div>
                 </div>
+              ))}
+            </div>
+          )}
+        </section>
 
-                <div className="space-y-2 text-sm text-slate-300">
-                  {order.items?.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between">
-                      <span>
-                        {item.quantity}x {item.name}
-                      </span>
-                      <span className="text-slate-400">
-                        €{(item.price * item.quantity).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="border-t border-slate-700 pt-3 flex justify-between items-center">
-                  <span className="font-bold text-lg">
-                    Totale: €{Number(order.total_amount).toFixed(2)}
-                  </span>
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    onClick={() => updateOrderStatus(order.id, 'preparing')}
-                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-xs py-2 rounded font-medium transition-colors"
-                  >
-                    In Preparazione
-                  </button>
-                  <button
-                    onClick={() => updateOrderStatus(order.id, 'completed')}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-xs py-2 rounded font-medium transition-colors"
-                  >
-                    Completato
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
-  )
+  );
 }
