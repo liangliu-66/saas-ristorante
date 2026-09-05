@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 
 export default function OnboardingPage() {
   const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
@@ -17,11 +18,13 @@ export default function OnboardingPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setLoading(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-    if (!user) {
-      setError('Devi prima effettuare il login.');
+    if (userError || !user) {
+      setError('Devi prima effettuare il login su /login.');
+      setLoading(false);
       return;
     }
 
@@ -41,7 +44,9 @@ export default function OnboardingPage() {
     ]);
 
     if (insertError) {
-      setError('Errore durante la creazione del locale. Nome o slug già esistente.');
+      console.error('Errore dettagliato Supabase:', insertError);
+      setError(`Errore Supabase [${insertError.code}]: ${insertError.message}`);
+      setLoading(false);
     } else {
       router.push('/dashboard');
       router.refresh();
@@ -52,10 +57,12 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 w-full max-w-md">
         <h1 className="text-2xl font-bold text-white mb-2 text-center">Configura il tuo Ristorante</h1>
-        <p className="text-slate-400 text-sm mb-6 text-center">Inserisci il nome del tuo locale per generare il menu digitale.</p>
+        <p className="text-slate-400 text-sm mb-6 text-center">
+          Inserisci il nome del tuo locale per generare il menu digitale.
+        </p>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg mb-4 text-sm">
+          <div className="bg-red-500/10 border border-red-500 text-red-400 p-3 rounded-lg mb-4 text-sm break-words">
             {error}
           </div>
         )}
@@ -65,7 +72,7 @@ export default function OnboardingPage() {
             <label className="block text-slate-400 text-sm mb-1">Nome Ristorante</label>
             <input
               type="text"
-              placeholder="es. Pizzeria Bella Napoli"
+              placeholder="es. NOM SUSHI"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-amber-500"
@@ -75,9 +82,10 @@ export default function OnboardingPage() {
 
           <button
             type="submit"
-            className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold p-3 rounded-lg transition-colors"
+            disabled={loading}
+            className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-900 font-bold p-3 rounded-lg transition-colors"
           >
-            Crea Locale e Vai alla Dashboard
+            {loading ? 'Creazione in corso...' : 'Crea Locale e Vai alla Dashboard'}
           </button>
         </form>
       </div>
