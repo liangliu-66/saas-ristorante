@@ -8,11 +8,13 @@ interface Product {
   name: string;
   description: string;
   price: number;
-  category: string;
 }
 
 export default function PublicMenuPage({ params }: { params: Promise<{ slug: string }> }) {
+  // Risoluzione asincrona dei parametri per Next.js 15+
   const resolvedParams = use(params);
+  const slug = resolvedParams?.slug;
+
   const [restaurant, setRestaurant] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,30 +25,58 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
   );
 
   useEffect(() => {
-    const fetchRestaurantAndMenu = async () => {
-      const { data: restData } = await supabase
+    if (!slug) return;
+
+    const fetchMenu = async () => {
+      // 1. Cerca il ristorante tramite lo slug
+      const { data: restData, error: restError } = await supabase
         .from('restaurants')
         .select('*')
-        .eq('slug', resolvedParams.slug)
-        .single();
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (restError) {
+        console.error('Errore durante il recupero del ristorante:', restError);
+      }
 
       if (restData) {
         setRestaurant(restData);
+
+        // 2. Cerca i prodotti legati al ristorante
         const { data: prodData } = await supabase
           .from('products')
           .select('*')
           .eq('restaurant_id', restData.id);
 
-        if (prodData) setProducts(prodData);
+        if (prodData) {
+          setProducts(prodData);
+        }
       }
+
       setLoading(false);
     };
 
-    fetchRestaurantAndMenu();
-  }, [resolvedParams.slug]);
+    fetchMenu();
+  }, [slug]);
 
-  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento menu...</div>;
-  if (!restaurant) return <div className="p-8 text-white bg-slate-900 min-h-screen">Ristorante non trovato.</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-6">
+        <p className="text-slate-400">Caricamento menu in corso...</p>
+      </div>
+    );
+  }
+
+  if (!restaurant) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 text-center space-y-3">
+        <h1 className="text-2xl font-bold text-red-400">Ristorante Non Trovato</h1>
+        <p className="text-slate-400 text-sm max-w-sm">
+          Nessun locale associato allo slug <code className="text-amber-500 bg-slate-800 px-2 py-1 rounded">"{slug}"</code>.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
@@ -58,7 +88,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
 
         <div className="space-y-4">
           {products.length === 0 ? (
-            <p className="text-slate-400 text-center">Nessun piatto presente nel menu.</p>
+            <p className="text-slate-400 text-center py-8">Nessun piatto presente nel menu.</p>
           ) : (
             products.map((item) => (
               <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
