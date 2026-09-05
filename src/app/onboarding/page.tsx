@@ -40,6 +40,7 @@ export default function OnboardingPage() {
         user_id: user.id,
         name: name,
         slug: slug,
+        email: user.email, // Passiamo l'email richiesta dal database
       },
     ]);
 
