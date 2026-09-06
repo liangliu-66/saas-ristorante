@@ -252,31 +252,28 @@ function PublicPageContent() {
         ) : activeTab === 'order' ? (
           /* TAB MENU & CARRELLO */
           <div className="space-y-6">
-            {/* Se non ci sono categorie O se nessun piatto ha una category_id valida */}
-            {categories.length === 0 || !items.some((item) => categories.some((c) => c.id === item.category_id)) ? (
+            {categories.length === 0 ? (
               <div className="space-y-2">
-                {items.length === 0 ? (
-                  <p className="text-center text-xs text-slate-500 py-4">Nessun piatto trovato nel menu.</p>
-                ) : (
-                  items.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
-                      <div className="space-y-0.5">
-                        <h3 className="font-bold text-xs text-white">{item.name}</h3>
-                        {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
-                        <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
-                      </div>
-                      <button
-                        onClick={() => addToCart(item)}
-                        className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
-                      >
-                        Aggiungi
-                      </button>
+                {items.map((item) => (
+                  <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
+                    {item.image_url && (
+                      <img src={item.image_url} alt={item.name} className="w-16 h-16 object-cover rounded-lg shrink-0 border border-slate-700" />
+                    )}
+                    <div className="space-y-0.5 flex-1">
+                      <h3 className="font-bold text-xs text-white">{item.name}</h3>
+                      {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
+                      <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
                     </div>
-                  ))
-                )}
+                    <button
+                      onClick={() => addToCart(item)}
+                      className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                    >
+                      Aggiungi
+                    </button>
+                  </div>
+                ))}
               </div>
             ) : (
-              /* Rendering normale diviso per Categorie */
               categories.map((cat) => {
                 const catItems = items.filter((i) => i.category_id === cat.id);
                 if (catItems.length === 0) return null;
@@ -286,15 +283,18 @@ function PublicPageContent() {
                     <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
                     <div className="space-y-2">
                       {catItems.map((item) => (
-                        <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
-                          <div className="space-y-0.5">
+                        <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
+                          {item.image_url && (
+                            <img src={item.image_url} alt={item.name} className="w-16 h-16 object-cover rounded-lg shrink-0 border border-slate-700" />
+                          )}
+                          <div className="space-y-0.5 flex-1">
                             <h3 className="font-bold text-xs text-white">{item.name}</h3>
                             {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
                             <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
                           </div>
                           <button
                             onClick={() => addToCart(item)}
-                            className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
+                            className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
                           >
                             Aggiungi
                           </button>
@@ -305,6 +305,96 @@ function PublicPageContent() {
                 );
               })
             )}
+
+            {/* RIEPILOGO CARRELLO & SCONTI CHECKOUT */}
+            {Object.keys(cart).length > 0 && (
+              <form onSubmit={handleSendOrder} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
+                <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine</h3>
+                <div className="space-y-2 divide-y divide-slate-700/50">
+                  {Object.values(cart).map(({ item, quantity }) => (
+                    <div key={item.id} className="pt-2 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="font-bold text-white">{quantity}x {item.name}</span>
+                        <span className="text-slate-400 block font-mono">€{(item.price * quantity).toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => updateQuantity(item.id, -1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">-</button>
+                        <span className="font-bold text-xs">{quantity}</span>
+                        <button type="button" onClick={() => updateQuantity(item.id, 1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">+</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-xs space-y-1 font-mono">
+                  <div className="flex justify-between text-slate-400">
+                    <span>Subtotale:</span>
+                    <span>€{rawTotal.toFixed(2)}</span>
+                  </div>
+                  {discountPercent > 0 && (
+                    <div className="flex justify-between text-emerald-400 font-bold">
+                      <span>Sconto Applicato ({discountPercent}%):</span>
+                      <span>-€{discountAmount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-amber-400 font-bold text-sm pt-1 border-t border-slate-800">
+                    <span>Totale Finale:</span>
+                    <span>€{finalTotal.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <input
+                    type="text"
+                    placeholder="Il tuo nome *"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Numero di telefono *"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                  <div className="flex gap-2 text-xs">
+                    <select
+                      value={orderType}
+                      onChange={(e) => setOrderType(e.target.value as any)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white flex-1 focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="takeaway">Ritiro d'asporto</option>
+                      <option value="delivery">Consegna a domicilio</option>
+                    </select>
+                    <input
+                      type="time"
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+                      required
+                    />
+                  </div>
+                  <textarea
+                    placeholder="Note generali o allergie (opzionale)"
+                    value={generalNotes}
+                    onChange={(e) => setGeneralNotes(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    rows={2}
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg transition-colors text-xs uppercase tracking-wider"
+                  >
+                    {isSubmitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
 
             {/* RIEPILOGO CARRELLO & SCONTI CHECKOUT */}
             {Object.keys(cart).length > 0 && (
