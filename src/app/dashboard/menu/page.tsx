@@ -233,7 +233,7 @@ export default function MenuManagement() {
           </Link>
         </div>
 
-        {/* Gestione Categorie */}
+        {/* Gestione Categorie con pulsante di eliminazione integrato */}
         <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
           <h2 className="text-sm font-bold text-amber-500">Gestione Categorie Menu</h2>
           <div className="flex gap-2">
@@ -246,7 +246,7 @@ export default function MenuManagement() {
             />
             <button
               onClick={handleAddCategory}
-              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded transition"
+              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded transition whitespace-nowrap"
             >
               + Aggiungi Categoria
             </button>
@@ -258,7 +258,7 @@ export default function MenuManagement() {
                 <span>{cat}</span>
                 <button
                   onClick={() => handleDeleteCategory(cat)}
-                  className="text-rose-400 hover:text-rose-300 font-bold ml-1"
+                  className="text-rose-400 hover:text-rose-200 font-bold px-1 py-0.5 rounded transition"
                   title="Elimina categoria"
                 >
                   ✕
