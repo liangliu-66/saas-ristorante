@@ -11,7 +11,7 @@ interface OrderItem {
   customer_phone: string;
   customer_email?: string;
   notes: string;
-  items?: Array<{ name: string; quantity: number; price: number; itemNote?: string }>;
+  items?: Array<{ name: string; quantity: number; price?: number; itemNote?: string }>;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   guests: number;
   party_size?: number;
@@ -24,7 +24,7 @@ export default function LiveDashboardPage() {
   const [restaurant, setRestaurant] = useState<any>(null);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'reservations' | 'orders'>('reservations');
+  const [activeTab, setActiveTab] = useState<'reservations' | 'orders'>('orders');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
   const [newOrderAlert, setNewOrderAlert] = useState(false);
 
@@ -152,19 +152,46 @@ export default function LiveDashboardPage() {
     return hour >= 16;
   });
 
-  const cleanNotes = (notes: string) => {
-    return notes
-      .replace(/\[PRENOTAZIONE TAVOLO\]\s*/g, '')
-      .replace(/\[ORDINE TAKEAWAY\]\s*/g, '')
-      .replace(/\[ORDINE DELIVERY\]\s*/g, '')
-      .replace(/\(GoogleRef:[^)]*\)/g, '')
-      .trim();
+  // Funzione che estrae sia la lista piatti (se era salvata nella stringa) sia la nota pura del cliente
+  const parseOrderDetails = (notesStr: string, dbItems?: any[]) => {
+    let extractedItems = dbItems && dbItems.length > 0 ? dbItems : [];
+    let cleanClientNotes = notesStr || '';
+
+    // Se non ci sono items strutturati nel DB, li estraiamo dalla stringa delle note
+    if (extractedItems.length === 0 && notesStr?.includes('Prodotti:')) {
+      const parts = notesStr.split('Prodotti:');
+      const itemsText = parts[1] || '';
+      
+      cleanClientNotes = parts[0]
+        .replace(/\[ORDINE [^\]]*\]/g, '')
+        .replace(/Note:\s*/g, '')
+        .replace(/\|/g, '')
+        .trim();
+
+      const itemStrings = itemsText.split(',');
+      extractedItems = itemStrings.map((str) => {
+        const trimmed = str.trim();
+        const match = trimmed.match(/^(\d+)x\s+(.*?)(?:\s+\(Modifiche:\s*(.*?)\))?$/);
+        if (match) {
+          return { quantity: parseInt(match[1]), name: match[2], itemNote: match[3] || '' };
+        }
+        return { quantity: 1, name: trimmed, itemNote: '' };
+      });
+    } else {
+      cleanClientNotes = cleanClientNotes
+        .replace(/\[PRENOTAZIONE TAVOLO\]/g, '')
+        .replace(/\[ORDINE [^\]]*\]/g, '')
+        .replace(/\(GoogleRef:[^)]*\)/g, '')
+        .trim();
+    }
+
+    return { items: extractedItems, clientNote: cleanClientNotes };
   };
 
   const renderCard = (item: OrderItem) => {
     const numPeople = item.guests || item.party_size || 1;
     const isExpanded = !!expandedCards[item.id];
-    const notesContent = cleanNotes(item.notes);
+    const { items: orderItems, clientNote } = parseOrderDetails(item.notes, item.items);
 
     return (
       <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3 shadow-sm">
@@ -195,25 +222,25 @@ export default function LiveDashboardPage() {
           </div>
         </div>
 
-        {/* Visualizzazione Comanda Piatti (se è un ordine) */}
-        {activeTab === 'orders' && item.items && item.items.length > 0 && (
+        {/* Visualizzazione Elenco Comanda Piatti */}
+        {activeTab === 'orders' && orderItems.length > 0 && (
           <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 space-y-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-amber-500 font-extrabold block">Comanda Ordine:</span>
+            <span className="text-[10px] uppercase tracking-wider text-amber-500 font-extrabold block">Comanda Piatti Selezionati:</span>
             <div className="divide-y divide-slate-800">
-              {item.items.map((it, idx) => (
+              {orderItems.map((it, idx) => (
                 <div key={idx} className="py-1 text-xs flex justify-between items-start">
                   <div>
                     <span className="font-bold text-white">{it.quantity}x {it.name}</span>
-                    {it.itemNote && <span className="text-amber-400 text-[11px] block">↳ Modifiche: {it.itemNote}</span>}
+                    {it.itemNote && <span className="text-amber-400 text-[11px] block">↳ Modifica: {it.itemNote}</span>}
                   </div>
-                  <span className="text-slate-400 font-mono">€{(it.price * it.quantity).toFixed(2)}</span>
+                  {it.price && <span className="text-slate-400 font-mono">€{(it.price * it.quantity).toFixed(2)}</span>}
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Dettagli Espandibili (Contatti & Note Generali Cliente) */}
+        {/* Dettagli Espandibili (Contatti & Note Cliente Pura) */}
         {isExpanded && (
           <div className="space-y-2 pt-2 border-t border-slate-700/60 transition-all">
             <div className="text-xs text-amber-400 font-semibold flex flex-wrap items-center gap-4">
@@ -221,11 +248,13 @@ export default function LiveDashboardPage() {
               {item.customer_email && <span>✉️ {item.customer_email}</span>}
             </div>
 
-            {notesContent && (
+            {clientNote ? (
               <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 text-xs text-slate-300">
                 <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note Cliente:</span>
-                <p className="whitespace-pre-line leading-snug">{notesContent}</p>
+                <p className="whitespace-pre-line leading-snug">{clientNote}</p>
               </div>
+            ) : (
+              <p className="text-[11px] text-slate-500 italic">Nessuna nota aggiuntiva specificata dal cliente.</p>
             )}
           </div>
         )}
@@ -292,16 +321,6 @@ export default function LiveDashboardPage() {
 
         <div className="flex border-b border-slate-800 gap-4">
           <button
-            onClick={() => setActiveTab('reservations')}
-            className={`pb-2.5 text-xs font-extrabold border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'reservations' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>📅 Prenotazioni Tavolo</span>
-            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-[10px]">{tableReservations.length}</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('orders')}
             className={`pb-2.5 text-xs font-extrabold border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === 'orders' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
@@ -309,6 +328,16 @@ export default function LiveDashboardPage() {
           >
             <span>🛍️ Ordini Ritiro & Delivery</span>
             <span className="bg-slate-800 px-2 py-0.5 rounded-full text-[10px]">{foodOrders.length}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('reservations')}
+            className={`pb-2.5 text-xs font-extrabold border-b-2 transition-colors flex items-center gap-2 ${
+              activeTab === 'reservations' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>📅 Prenotazioni Tavolo</span>
+            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-[10px]">{tableReservations.length}</span>
           </button>
         </div>
 

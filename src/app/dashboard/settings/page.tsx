@@ -206,24 +206,24 @@ export default function SettingsPage() {
           </section>
 
           <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-            <h2 className="text-base font-bold text-amber-500">Servizi</h2>
-            <div className="space-y-3">
-              <label className="flex items-center gap-3">
-                <input type="checkbox" checked={allowTakeaway} onChange={(e) => setAllowTakeaway(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-                <span className="text-xs">Abilita Asporto</span>
-              </label>
+  <h2 className="text-base font-bold text-amber-500">Servizi</h2>
+  <div className="space-y-3">
+    <label className="flex items-center gap-3 cursor-pointer">
+      <input type="checkbox" checked={allowTakeaway} onChange={(e) => setAllowTakeaway(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+      <span className="text-xs font-semibold">Abilita Ritiro</span>
+    </label>
 
-              <label className="flex items-center gap-3">
-                <input type="checkbox" checked={allowDelivery} onChange={(e) => setAllowDelivery(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-                <span className="text-xs">Abilita Delivery</span>
-              </label>
+    <label className="flex items-center gap-3 cursor-pointer">
+      <input type="checkbox" checked={allowDelivery} onChange={(e) => setAllowDelivery(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+      <span className="text-xs font-semibold">Abilita Consegna</span>
+    </label>
 
-              <label className="flex items-center gap-3">
-                <input type="checkbox" checked={allowReservations} onChange={(e) => setAllowReservations(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-                <span className="text-xs">Abilita Prenotazione Tavoli</span>
-              </label>
-            </div>
-          </section>
+    <label className="flex items-center gap-3 cursor-pointer">
+      <input type="checkbox" checked={allowReservations} onChange={(e) => setAllowReservations(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+      <span className="text-xs font-semibold">Abilita Prenotazione Tavoli</span>
+    </label>
+  </div>
+</section>
 
           <button
             type="submit"
