@@ -46,7 +46,101 @@ export default function LiveDashboardPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Inizializza o recupera l'AudioContext del browser
+  // Controllo protezione accesso e caricamento dati
+  useEffect(() => {
+    const init = async () => {
+      // 1. Verifica autenticazione (Blocca l'accesso se non loggato)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push('/login'); return; }
+
+      const { data: restData } = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!restData) { router.push('/onboarding'); return; }
+
+      setRestaurant(restData);
+      await fetchAllData(restData.id);
+      setLoading(false);
+
+      // Realtime Ordini
+      const ordersChannel = supabase
+        .channel('realtime_orders')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restData.id}` },
+          (payload) => {
+            if (payload.eventType === 'INSERT') {
+              const newOrd: OrderItem = { 
+                ...payload.new as any, 
+                date: payload.new.pickup_date, 
+                time: payload.new.pickup_time || '12:00', 
+                type: 'order' 
+              };
+              setOrdersList((prev) => [...prev, newOrd].sort((a, b) => (a.time > b.time ? 1 : -1)));
+              
+              if (newOrd.status === 'pending') {
+                setIsAlarmPlaying(true);
+              }
+            } else if (payload.eventType === 'UPDATE') {
+              setOrdersList((prev) => {
+                const updated = prev.map((o) => (o.id === payload.new.id ? { ...payload.new as any, date: payload.new.pickup_date, time: payload.new.pickup_time || '12:00', type: 'order' } : o));
+                if (!updated.some((o) => o.status === 'pending' && o.date === todayDate)) {
+                  setIsAlarmPlaying(false);
+                }
+                return updated;
+              });
+            }
+          }
+        )
+        .subscribe();
+
+      // Realtime Prenotazioni
+      const reservationsChannel = supabase
+        .channel('realtime_reservations')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'reservations', filter: `restaurant_id=eq.${restData.id}` },
+          (payload) => {
+            if (payload.eventType === 'INSERT') {
+              const newRes: OrderItem = { 
+                ...payload.new as any, 
+                date: payload.new.reservation_date, 
+                time: payload.new.reservation_time || '12:00', 
+                type: 'reservation' 
+              };
+              setReservationsList((prev) => [...prev, newRes].sort((a, b) => (a.time > b.time ? 1 : -1)));
+              
+              if (audioEnabled) {
+                playBeep(659.25, 0.2, 'sine');
+                setTimeout(() => playBeep(880, 0.3, 'sine'), 150);
+              }
+            } else if (payload.eventType === 'UPDATE') {
+              setReservationsList((prev) => 
+                prev.map((r) => (r.id === payload.new.id ? { ...r, ...payload.new as any, date: payload.new.reservation_date, time: payload.new.reservation_time || '12:00', type: 'reservation' } : r))
+              );
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(ordersChannel);
+        supabase.removeChannel(reservationsChannel);
+      };
+    };
+
+    init();
+  }, [audioEnabled, router, supabase]);
+
   const getAudioContext = () => {
     if (!audioCtxRef.current) {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -60,7 +154,6 @@ export default function LiveDashboardPage() {
     return audioCtxRef.current;
   };
 
-  // Funzione per generare i toni audio ad ALTO VOLUME (Gain portato a 0.9)
   const playBeep = (freq = 880, duration = 0.3, type: OscillatorType = 'sawtooth') => {
     try {
       const ctx = getAudioContext();
@@ -69,10 +162,8 @@ export default function LiveDashboardPage() {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
-      osc.type = type; // 'sawtooth' garantisce un timbro squillante e ben udibile
+      osc.type = type;
       osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      
-      // Volume elevato (0.90 su max 1.0)
       gain.gain.setValueAtTime(0.9, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
 
@@ -86,20 +177,18 @@ export default function LiveDashboardPage() {
     }
   };
 
-  // Abilita l'audio dopo interazione utente
   const enableAudio = () => {
     const ctx = getAudioContext();
     if (ctx) {
       ctx.resume().then(() => {
         setAudioEnabled(true);
-        playBeep(880, 0.3, 'sine'); // Suono di test per confermare
+        playBeep(880, 0.3, 'sine');
       });
     } else {
       setAudioEnabled(true);
     }
   };
 
-  // Esegue un suono di prova manuale
   const testSound = () => {
     enableAudio();
     playBeep(987.77, 0.2, 'triangle');
@@ -145,95 +234,6 @@ export default function LiveDashboardPage() {
     }
   };
 
-  useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
-
-      const { data: restData } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (!restData) { router.push('/onboarding'); return; }
-
-      setRestaurant(restData);
-      await fetchAllData(restData.id);
-      setLoading(false);
-
-      // Realtime Ordini (Loop Continuo per Asporto/Consegna)
-      const ordersChannel = supabase
-        .channel('realtime_orders')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restData.id}` },
-          (payload) => {
-            if (payload.eventType === 'INSERT') {
-              const newOrd: OrderItem = { 
-                ...payload.new as any, 
-                date: payload.new.pickup_date, 
-                time: payload.new.pickup_time || '12:00', 
-                type: 'order' 
-              };
-              setOrdersList((prev) => [...prev, newOrd].sort((a, b) => (a.time > b.time ? 1 : -1)));
-              
-              if (newOrd.status === 'pending') {
-                setIsAlarmPlaying(true);
-              }
-            } else if (payload.eventType === 'UPDATE') {
-              setOrdersList((prev) => {
-                const updated = prev.map((o) => (o.id === payload.new.id ? { ...payload.new as any, date: payload.new.pickup_date, time: payload.new.pickup_time || '12:00', type: 'order' } : o));
-                if (!updated.some((o) => o.status === 'pending' && o.date === todayDate)) {
-                  setIsAlarmPlaying(false);
-                }
-                return updated;
-              });
-            }
-          }
-        )
-        .subscribe();
-
-      // Realtime Prenotazioni (Ping Singolo Breve per Tavoli)
-      const reservationsChannel = supabase
-        .channel('realtime_reservations')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'reservations', filter: `restaurant_id=eq.${restData.id}` },
-          (payload) => {
-            if (payload.eventType === 'INSERT') {
-              const newRes: OrderItem = { 
-                ...payload.new as any, 
-                date: payload.new.reservation_date, 
-                time: payload.new.reservation_time || '12:00', 
-                type: 'reservation' 
-              };
-              setReservationsList((prev) => [...prev, newRes].sort((a, b) => (a.time > b.time ? 1 : -1)));
-              
-              // Suono breve singolo per prenotazione tavolo
-              if (audioEnabled) {
-                playBeep(659.25, 0.2, 'sine');
-                setTimeout(() => playBeep(880, 0.3, 'sine'), 150);
-              }
-            } else if (payload.eventType === 'UPDATE') {
-              setReservationsList((prev) => 
-                prev.map((r) => (r.id === payload.new.id ? { ...r, ...payload.new as any, date: payload.new.reservation_date, time: payload.new.reservation_time || '12:00', type: 'reservation' } : r))
-              );
-            }
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(ordersChannel);
-        supabase.removeChannel(reservationsChannel);
-      };
-    };
-
-    init();
-  }, [audioEnabled]);
-
-  // Gestione dell'allarme ad alto volume per ordini in attesa
   useEffect(() => {
     let intervalId: any;
     if (isAlarmPlaying && audioEnabled) {
@@ -442,7 +442,7 @@ export default function LiveDashboardPage() {
           </div>
         )}
 
-        {/* Header Gestore con Tasto Promozioni in Evidenza */}
+        {/* Header Gestore */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-4 sm:p-5 rounded-xl border border-slate-700 gap-3">
           <div>
             <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Pannello Live</span>
@@ -450,7 +450,6 @@ export default function LiveDashboardPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs w-full sm:w-auto">
-            {/* Tasto Attivazione Audio */}
             <button
               onClick={enableAudio}
               className={`px-3 py-2 rounded-lg font-bold border transition ${
@@ -467,7 +466,6 @@ export default function LiveDashboardPage() {
               Test Audio
             </button>
 
-            {/* NUOVO TASTO PROMOZIONI */}
             <Link 
               href="/dashboard/promotions" 
               className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold px-3 py-2 rounded-lg transition-colors flex items-center gap-1"
@@ -475,7 +473,11 @@ export default function LiveDashboardPage() {
               Promozioni
             </Link>
 
-            <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-2 rounded-lg transition-colors">
+            {/* TASTO MENU AGGANCIATO CORRETTAMENTE ALLO SLUG */}
+            <Link 
+              href={restaurant?.slug ? `/menu/${restaurant.slug}` : '/dashboard/menu'} 
+              className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-3 py-2 rounded-lg transition-colors"
+            >
               Menu
             </Link>
             
