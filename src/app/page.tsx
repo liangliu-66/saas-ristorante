@@ -22,14 +22,14 @@ interface CartItem extends Product {
 
 function MainRestaurantContent() {
   const searchParams = useSearchParams();
-  const rwgToken = searchParams?.get('rwg_token'); // Token di tracciamento ufficiali di Google
+  const rwgToken = searchParams?.get('rwg_token');
 
   const [restaurant, setRestaurant] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'menu' | 'reservation'>('menu');
 
-  // Stato Carrello per Ordini
+  // Carrello & Checkout
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
@@ -37,11 +37,12 @@ function MainRestaurantContent() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
+  const [pickupTime, setPickupTime] = useState('19:30');
   const [notes, setNotes] = useState('');
   const [sendingOrder, setSendingOrder] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
-  // Form Prenotazione Tavolo (Compatibile con Google Reserve)
+  // Form Prenotazione
   const [resName, setResName] = useState('');
   const [resPhone, setResPhone] = useState('');
   const [resEmail, setResEmail] = useState('');
@@ -57,15 +58,33 @@ function MainRestaurantContent() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+  // Generatore di fasce orarie ogni 15/30 minuti
+  const generateTimeSlots = (start: string, end: string, stepMinutes: number = 30) => {
+    const slots: string[] = [];
+    let [h, m] = start.split(':').map(Number);
+    const [endH, endM] = end.split(':').map(Number);
+
+    while (h < endH || (h === endH && m <= endM)) {
+      const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      slots.push(timeStr);
+      m += stepMinutes;
+      if (m >= 60) {
+        h += Math.floor(m / 60);
+        m %= 60;
+      }
+    }
+    return slots;
+  };
+
+  const timeSlots = generateTimeSlots('12:00', '22:30', 15);
+
   useEffect(() => {
-    // Se l'URL da Google contiene action=reserve apre subito la tab prenotazione
     if (searchParams?.get('action') === 'reserve') {
       setActiveTab('reservation');
     }
 
     const fetchFirstRestaurant = async () => {
       setLoading(true);
-      // Prende il ristorante attivo nel sistema
       const { data: restData } = await supabase
         .from('restaurants')
         .select('*')
@@ -76,7 +95,6 @@ function MainRestaurantContent() {
         setRestaurant(restData);
         if (restData.allow_delivery) setOrderType('delivery');
 
-        // Carica i piatti visibili
         const { data: prodData } = await supabase
           .from('products')
           .select('*')
@@ -91,7 +109,6 @@ function MainRestaurantContent() {
     fetchFirstRestaurant();
   }, [searchParams]);
 
-  // Carrello
   const addToCart = (product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
@@ -115,7 +132,7 @@ function MainRestaurantContent() {
   const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Invio Ordine Asporto / Delivery
+  // Invio Ordine
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName || !customerPhone || cart.length === 0) return;
@@ -126,11 +143,11 @@ function MainRestaurantContent() {
         restaurant_id: restaurant.id,
         customer_name: customerName,
         customer_phone: customerPhone,
-        notes: `[ORDINE ${orderType.toUpperCase()}] ${notes} (GoogleRef: ${rwgToken || 'Direct'}) - Prodotti: ${cart.map((c) => `${c.quantity}x ${c.name}`).join(', ')}`,
+        reservation_date: new Date().toISOString().split('T')[0],
+        reservation_time: pickupTime,
+        notes: `[ORDINE ${orderType.toUpperCase()} - ORARIO: ${pickupTime}] ${notes} (GoogleRef: ${rwgToken || 'Direct'}) - Prodotti: ${cart.map((c) => `${c.quantity}x ${c.name}`).join(', ')}`,
         status: 'pending',
         guests: totalItems,
-        reservation_date: new Date().toISOString().split('T')[0],
-        reservation_time: new Date().toTimeString().split(' ')[0],
       },
     ]);
 
@@ -147,18 +164,21 @@ function MainRestaurantContent() {
     setSendingOrder(false);
   };
 
-  // Invio Prenotazione Tavolo (per Google Reserve)
+  // Invio Prenotazione (almeno uno tra Phone o Email)
   const handleSendReservation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resName || !resPhone || !resDate) return;
+    if (!resName || (!resPhone && !resEmail) || !resDate) {
+      alert("Inserire un numero di telefono oppure una email per la prenotazione.");
+      return;
+    }
     setSendingRes(true);
 
     const { error } = await supabase.from('reservations').insert([
       {
         restaurant_id: restaurant.id,
         customer_name: resName,
-        customer_phone: resPhone,
-        customer_email: resEmail,
+        customer_phone: resPhone || 'Non specificato',
+        customer_email: resEmail || null,
         reservation_date: resDate,
         reservation_time: resTime,
         guests: parseInt(resGuests) || 2,
@@ -180,25 +200,20 @@ function MainRestaurantContent() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-900 text-white p-6 flex items-center justify-center">
-        Caricamento locale...
-      </div>
-    );
+    return <div className="min-h-screen bg-slate-900 text-white p-6 flex items-center justify-center">Caricamento...</div>;
   }
 
   if (!restaurant) {
     return (
       <div className="min-h-screen bg-slate-900 text-white p-6 flex flex-col items-center justify-center text-center">
-        <h1 className="text-2xl font-bold text-red-400">Ristorante Non Configurato</h1>
-        <p className="text-slate-400 text-sm mt-2">Configura un locale dalla tua dashboard.</p>
+        <h1 className="text-2xl font-bold text-red-400">Ristorante Non Trovato</h1>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-900 text-white pb-28">
-      {/* Intestazione Locale */}
+      {/* Header */}
       <header className="bg-slate-800 border-b border-slate-700 p-6 text-center space-y-3">
         <h1 className="text-3xl font-black text-amber-500">{restaurant.name}</h1>
         {restaurant.description && <p className="text-slate-300 text-sm max-w-md mx-auto">{restaurant.description}</p>}
@@ -207,7 +222,6 @@ function MainRestaurantContent() {
           {restaurant.opening_hours?.text && <span>🕒 {restaurant.opening_hours.text}</span>}
         </div>
 
-        {/* Pulsanti Switch Mode: Ordina / Prenota Tavolo */}
         <div className="flex justify-center gap-2 pt-2 max-w-xs mx-auto">
           <button
             onClick={() => setActiveTab('menu')}
@@ -215,7 +229,7 @@ function MainRestaurantContent() {
               activeTab === 'menu' ? 'bg-amber-500 text-slate-900' : 'bg-slate-900 text-slate-400 border border-slate-700'
             }`}
           >
-            🛍️ Ordina Online
+            Ordina Online
           </button>
           {restaurant.allow_reservations && (
             <button
@@ -224,17 +238,17 @@ function MainRestaurantContent() {
                 activeTab === 'reservation' ? 'bg-amber-500 text-slate-900' : 'bg-slate-900 text-slate-400 border border-slate-700'
               }`}
             >
-              📅 Prenota Tavolo
+              Prenota Tavolo
             </button>
           )}
         </div>
       </header>
 
-      {/* Sezione Menu Ordini */}
+      {/* Sezione Menu */}
       {activeTab === 'menu' && (
         <main className="max-w-md mx-auto p-4 space-y-4">
           {products.length === 0 ? (
-            <p className="text-slate-400 text-center py-8">Nessun piatto disponibile in questo momento.</p>
+            <p className="text-slate-400 text-center py-8">Nessun piatto disponibile.</p>
           ) : (
             products.map((item) => {
               const inCart = cart.find((c) => c.id === item.id);
@@ -272,24 +286,17 @@ function MainRestaurantContent() {
         </main>
       )}
 
-      {/* Sezione Prenotazione Tavoli (Integrazione Google) */}
+      {/* Sezione Prenotazione */}
       {activeTab === 'reservation' && (
         <main className="max-w-md mx-auto p-4 space-y-4">
           <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4">
-            <h2 className="text-lg font-bold text-amber-500 flex items-center gap-2">
-              <span>📅</span> Prenota un Tavolo
-            </h2>
+            <h2 className="text-lg font-bold text-amber-500">Prenota un Tavolo</h2>
 
             {resSuccess ? (
               <div className="text-center py-6 space-y-2">
-                <span className="text-3xl">🎉</span>
                 <h3 className="text-lg font-bold text-emerald-400">Richiesta Inviata!</h3>
-                <p className="text-slate-400 text-xs">Il ristorante ti invierà la conferma via SMS/Telefono.</p>
-                <button
-                  onClick={() => setResSuccess(false)}
-                  className="mt-4 bg-slate-700 text-xs text-white px-4 py-2 rounded-lg"
-                >
-                  Fai un'altra prenotazione
+                <button onClick={() => setResSuccess(false)} className="mt-4 bg-slate-700 text-xs text-white px-4 py-2 rounded-lg">
+                  Nuova prenotazione
                 </button>
               </div>
             ) : (
@@ -313,64 +320,67 @@ function MainRestaurantContent() {
                       onChange={(e) => setResTime(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
                     >
-                      <option value="12:30">12:30</option>
-                      <option value="13:00">13:00</option>
-                      <option value="13:30">13:30</option>
-                      <option value="19:30">19:30</option>
-                      <option value="20:00">20:00</option>
-                      <option value="20:30">20:30</option>
-                      <option value="21:00">21:00</option>
+                      {timeSlots.map((slot) => (
+                        <option key={slot} value={slot}>{slot}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Numero Persone</label>
+                  <label className="block text-xs text-slate-400 mb-1">Commensali</label>
                   <select
                     value={resGuests}
                     onChange={(e) => setResGuests(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
                   >
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
                       <option key={n} value={n}>{n} {n === 1 ? 'Persona' : 'Persone'}</option>
                     ))}
                   </select>
                 </div>
 
                 <div className="space-y-3 pt-2">
-                  <input
-                    type="text"
-                    placeholder="Nome e Cognome"
-                    value={resName}
-                    onChange={(e) => setResName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
-                    required
-                  />
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Nome e Cognome</label>
+                    <input
+                      type="text"
+                      value={resName}
+                      onChange={(e) => setResName(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                      required
+                    />
+                  </div>
 
-                  <input
-                    type="tel"
-                    placeholder="Telefono (es. 3391234567)"
-                    value={resPhone}
-                    onChange={(e) => setResPhone(e.target.value.replace(/[^0-9+]/g, ''))}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
-                    required
-                  />
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Telefono (oppure Email sotto)</label>
+                    <input
+                      type="tel"
+                      value={resPhone}
+                      onChange={(e) => setResPhone(e.target.value.replace(/[^0-9+]/g, ''))}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-                  <input
-                    type="email"
-                    placeholder="Email (opzionale per conferma)"
-                    value={resEmail}
-                    onChange={(e) => setResEmail(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
-                  />
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Email (oppure Telefono sopra)</label>
+                    <input
+                      type="email"
+                      value={resEmail}
+                      onChange={(e) => setResEmail(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-                  <textarea
-                    rows={2}
-                    placeholder="Richieste particolari (es. seggiolone, allergie...)"
-                    value={resNotes}
-                    onChange={(e) => setResNotes(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
-                  />
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Note</label>
+                    <textarea
+                      rows={2}
+                      value={resNotes}
+                      onChange={(e) => setResNotes(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
                 </div>
 
                 <button
@@ -378,7 +388,7 @@ function MainRestaurantContent() {
                   disabled={sendingRes}
                   className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold p-3 rounded-lg transition-colors text-xs"
                 >
-                  {sendingRes ? 'Invio in corso...' : 'Conferma Prenotazione Tavolo'}
+                  {sendingRes ? 'Invio in corso...' : 'Invia Prenotazione Tavolo'}
                 </button>
               </form>
             )}
@@ -404,7 +414,7 @@ function MainRestaurantContent() {
         </div>
       )}
 
-      {/* Modale Checkout */}
+      {/* Modale Checkout Ordine */}
       {isCheckoutOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
@@ -415,9 +425,7 @@ function MainRestaurantContent() {
 
             {orderSuccess ? (
               <div className="text-center py-8 space-y-2">
-                <span className="text-4xl">🎉</span>
                 <h3 className="text-xl font-bold text-emerald-400">Ordine Inviato!</h3>
-                <p className="text-slate-400 text-xs">Il ristorante ha ricevuto la tua richiesta.</p>
               </div>
             ) : (
               <form onSubmit={handleSendOrder} className="space-y-4">
@@ -437,7 +445,7 @@ function MainRestaurantContent() {
                       onClick={() => setOrderType('takeaway')}
                       className={`p-2 rounded-lg text-xs font-bold border ${orderType === 'takeaway' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700'}`}
                     >
-                      🥡 Asporto
+                      Asporto
                     </button>
                   )}
                   {restaurant.allow_delivery && (
@@ -446,37 +454,56 @@ function MainRestaurantContent() {
                       onClick={() => setOrderType('delivery')}
                       className={`p-2 rounded-lg text-xs font-bold border ${orderType === 'delivery' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700'}`}
                     >
-                      🛵 Consegna (€{Number(restaurant.delivery_fee || 0).toFixed(2)})
+                      Consegna (€{Number(restaurant.delivery_fee || 0).toFixed(2)})
                     </button>
                   )}
                 </div>
 
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Orario Desiderato Ritiro/Consegna</label>
+                  <select
+                    value={pickupTime}
+                    onChange={(e) => setPickupTime(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                  >
+                    {timeSlots.map((slot) => (
+                      <option key={slot} value={slot}>{slot}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="space-y-3">
-                  <input
-                    type="text"
-                    placeholder="Nome e Cognome"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
-                    required
-                  />
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Nome e Cognome</label>
+                    <input
+                      type="text"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                      required
+                    />
+                  </div>
 
-                  <input
-                    type="tel"
-                    placeholder="Telefono (es. 3391234567)"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9+]/g, ''))}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
-                    required
-                  />
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Telefono</label>
+                    <input
+                      type="tel"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9+]/g, ''))}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                      required
+                    />
+                  </div>
 
-                  <textarea
-                    rows={2}
-                    placeholder="Note per il ristorante..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
-                  />
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Note</label>
+                    <textarea
+                      rows={2}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
                 </div>
 
                 <button
