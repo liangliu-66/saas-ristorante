@@ -23,10 +23,8 @@ function PublicPageContent() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
   
-  // Gestione note individuali per piatto nel carrello
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
-  // Date e orari correnti per validazione e filtri
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
   const currentHour = now.getHours();
@@ -46,7 +44,7 @@ function PublicPageContent() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Stato per la ricevuta/riepilogo dopo l'invio
+  // Stato ricevuta con salvataggio persistente in localStorage
   const [submittedReceipt, setSubmittedReceipt] = useState<any>(null);
 
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -57,6 +55,12 @@ function PublicPageContent() {
   );
 
   useEffect(() => {
+    // Recupera eventuale ricevuta salvata in precedenza nel browser
+    const savedReceipt = localStorage.getItem('nom_last_receipt');
+    if (savedReceipt) {
+      try { setSubmittedReceipt(JSON.parse(savedReceipt)); } catch (e) { /* ignora */ }
+    }
+
     let isMounted = true;
 
     const loadData = async () => {
@@ -153,9 +157,20 @@ function PublicPageContent() {
     });
   };
 
+  // Funzione di validazione telefono (almeno 8 cifre valide)
+  const isValidPhone = (phone: string) => {
+    const cleanPhone = phone.replace(/[\s\-\(\)\+]/g, '');
+    return /^\d{8,15}$/.test(cleanPhone);
+  };
+
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
+
+    if (!isValidPhone(customerPhone)) {
+      alert("Inserisci un numero di telefono valido (almeno 8 cifre)!");
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -163,7 +178,9 @@ function PublicPageContent() {
       name: c.product.name,
       quantity: c.quantity,
       price: c.product.price,
-      itemNote: c.note,
+      // Inseriamo la nota formattata per renderla visibile nella comanda gestore
+      itemNote: c.note ? `Nota piatto: ${c.note}` : undefined,
+      note: c.note
     }));
 
     const fullPickupTime = `${orderDate} ${pickupTime}`;
@@ -171,7 +188,7 @@ function PublicPageContent() {
       ? `${generalNotes}${discountPercent > 0 ? ` [Sconto ${discountPercent}% applicato]` : ''}` 
       : (discountPercent > 0 ? `[Sconto ${discountPercent}% applicato]` : '');
 
-    const { data, error } = await supabase.from('orders').insert({
+    const { error } = await supabase.from('orders').insert({
       restaurant_id: restaurant?.id,
       customer_name: customerName,
       customer_phone: customerPhone,
@@ -181,11 +198,11 @@ function PublicPageContent() {
       notes: orderNotesPayload,
       total_amount: finalTotal,
       status: 'pending',
-    }).select().single();
+    });
 
     setIsSubmitting(false);
     if (!error) {
-      setSubmittedReceipt({
+      const receiptData = {
         type: 'order',
         customerName,
         customerPhone,
@@ -195,7 +212,9 @@ function PublicPageContent() {
         notes: orderNotesPayload,
         total: finalTotal,
         discountPercent
-      });
+      };
+      setSubmittedReceipt(receiptData);
+      localStorage.setItem('nom_last_receipt', JSON.stringify(receiptData));
       setCart({});
       setGeneralNotes('');
     } else {
@@ -210,12 +229,17 @@ function PublicPageContent() {
       return;
     }
 
+    if (customerPhone && !isValidPhone(customerPhone)) {
+      alert("Inserisci un numero di telefono valido (almeno 8 cifre)!");
+      return;
+    }
+
     setIsSubmitting(true);
 
     const rwgToken = searchParams.get('rwg_token');
     const reservationNotesPayload = `${resNotes || ''}${rwgToken ? ` (Ref: rwg_token)` : ''}`;
 
-    const { data, error } = await supabase.from('reservations').insert({
+    const { error } = await supabase.from('reservations').insert({
       restaurant_id: restaurant?.id,
       customer_name: customerName,
       customer_phone: customerPhone || null,
@@ -225,11 +249,11 @@ function PublicPageContent() {
       reservation_time: resTime,
       notes: reservationNotesPayload,
       status: 'pending',
-    }).select().single();
+    });
 
     setIsSubmitting(false);
     if (!error) {
-      setSubmittedReceipt({
+      const receiptData = {
         type: 'reservation',
         customerName,
         customerPhone,
@@ -238,7 +262,9 @@ function PublicPageContent() {
         time: resTime,
         guests: resGuests,
         notes: resNotes
-      });
+      };
+      setSubmittedReceipt(receiptData);
+      localStorage.setItem('nom_last_receipt', JSON.stringify(receiptData));
     } else {
       alert(`Errore invio prenotazione: ${error.message}`);
     }
@@ -312,17 +338,16 @@ function PublicPageContent() {
           </div>
         )}
 
-        {/* Mostra la tab Prenota Tavolo solo se allowReservations è true */}
         <div className={`flex bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs ${!allowReservations ? 'grid grid-cols-1' : 'grid grid-cols-2 gap-1'}`}>
           <button
-            onClick={() => { setActiveTab('order'); setSubmittedReceipt(null); }}
+            onClick={() => { setActiveTab('order'); }}
             className={`py-2.5 rounded-lg font-bold transition-all ${activeTab === 'order' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}
           >
             Ordina Online
           </button>
           {allowReservations && (
             <button
-              onClick={() => { setActiveTab('reserve'); setSubmittedReceipt(null); }}
+              onClick={() => { setActiveTab('reserve'); }}
               className={`py-2.5 rounded-lg font-bold transition-all ${activeTab === 'reserve' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}
             >
               Prenota Tavolo
@@ -363,7 +388,7 @@ function PublicPageContent() {
                     <div key={idx} className="flex justify-between text-slate-300 py-1 border-b border-slate-700/40">
                       <div>
                         <span>{it.quantity}x {it.name}</span>
-                        {it.itemNote && <span className="block text-[10px] text-amber-300">Nota: {it.itemNote}</span>}
+                        {it.itemNote && <span className="block text-[10px] text-amber-300">{it.itemNote}</span>}
                       </div>
                       <span>€{(it.price * it.quantity).toFixed(2)}</span>
                     </div>
@@ -410,16 +435,18 @@ function PublicPageContent() {
             )}
 
             <button
-              onClick={() => setSubmittedReceipt(null)}
+              onClick={() => {
+                setSubmittedReceipt(null);
+                localStorage.removeItem('nom_last_receipt');
+              }}
               className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 rounded-lg transition-colors font-sans uppercase tracking-wider"
             >
-              Torna al Menu / Fai un'altra richiesta
+              Fai un nuovo ordine / prenotazione
             </button>
           </div>
         ) : activeTab === 'order' ? (
           <div className="space-y-6">
             
-            {/* Selezione del tipo di ordine PRIMA del menu */}
             <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center justify-between text-xs">
               <span className="font-bold text-amber-500 uppercase tracking-wide">Modalità di Ordine:</span>
               <select
@@ -486,7 +513,6 @@ function PublicPageContent() {
                           <span className="text-slate-400 block font-mono">€{(product.price * quantity).toFixed(2)}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          {/* Pulsante Nota per singolo piatto */}
                           <button
                             type="button"
                             title="Aggiungi nota al piatto"
@@ -503,7 +529,6 @@ function PublicPageContent() {
                         </div>
                       </div>
 
-                      {/* Input nota per singolo piatto */}
                       {(editingNoteId === product.id || note) && (
                         <div className="pt-1">
                           <input
@@ -554,7 +579,6 @@ function PublicPageContent() {
                     required
                   />
 
-                  {/* Selezione Data e Ora con slot oscurati se passati */}
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <input
                       type="date"
@@ -577,7 +601,6 @@ function PublicPageContent() {
                     </select>
                   </div>
 
-                  {/* Nota generale dell'ordine ripristinata */}
                   <textarea
                     placeholder="Note generali o allergie (opzionale)"
                     value={generalNotes}
