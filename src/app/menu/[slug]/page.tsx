@@ -1,485 +1,411 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
-function PublicMenuContent() {
-  const params = useParams();
-  const searchParams = useSearchParams();
-  const rawSlug = params?.slug;
-  const slug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
-  const initialAction = searchParams.get('action');
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  image_url: string | null;
+  is_available: boolean;
+}
 
+export default function MenuManagementPage() {
   const [restaurant, setRestaurant] = useState<any>(null);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [items, setItems] = useState<any[]>([]);
-  const [promotions, setPromotions] = useState<any[]>([]);
-  const [discountRules, setDiscountRules] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'order' | 'reserve'>(
-    initialAction === 'reserve' ? 'reserve' : 'order'
-  );
-
-  // Stato Carrello & Form
-  const [cart, setCart] = useState<Record<string, { item: any; quantity: number; note: string }>>({});
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
-  const [pickupTime, setPickupTime] = useState('19:30');
-  const [generalNotes, setGeneralNotes] = useState('');
-
-  // Stato Prenotazione
-  const [resDate, setResDate] = useState(new Date().toISOString().split('T')[0]);
-  const [resTime, setResTime] = useState('20:00');
-  const [resGuests, setResGuests] = useState(2);
-  const [resNotes, setResNotes] = useState('');
-
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [newCatInput, setNewCatInput] = useState('');
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderSuccess, setOrderSuccess] = useState(false);
-  const [currentSlide, setCurrentSlide] = useState(0);
 
+  // Form stato
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+  const [category, setCategory] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const router = useRouter();
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  useEffect(() => {
-    let isMounted = true;
+  const fetchData = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.push('/login'); return; }
 
-    const loadData = async () => {
-      try {
-        let targetRest: any = null;
+    const { data: restData } = await supabase
+      .from('restaurants')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-        // 1. Cerca il ristorante tramite slug o id se presente
-        if (slug) {
-          const { data: restData } = await supabase
-            .from('restaurants')
-            .select('*')
-            .or(`slug.eq.${slug},id.eq.${slug}`)
-            .maybeSingle();
-          targetRest = restData;
-        }
+    if (!restData) { router.push('/onboarding'); return; }
+    setRestaurant(restData);
 
-        // Fallback: Se non viene trovato tramite slug, prendiamo il primo ristorante presente
-        if (!targetRest) {
-          const { data: fallbackRest } = await supabase.from('restaurants').select('*').limit(1).maybeSingle();
-          targetRest = fallbackRest;
-        }
+    // Carica le categorie dalla tabella dedicata 'categories'
+    const { data: catData } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('restaurant_id', restData.id);
 
-        if (isMounted && targetRest) {
-          setRestaurant(targetRest);
+    const catList = catData && catData.length > 0 
+      ? catData.map((c: any) => c.name) 
+      : ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
+      
+    setCategories(catList);
+    setCategory(catList[0] || 'Antipasti');
 
-          const [catRes, itemRes, promoRes, discRes] = await Promise.allSettled([
-            supabase.from('categories').select('*').eq('restaurant_id', targetRest.id),
-            supabase.from('items').select('*').eq('restaurant_id', targetRest.id),
-            supabase.from('promotions').select('*').eq('restaurant_id', targetRest.id),
-            supabase.from('discount_rules').select('*').eq('restaurant_id', targetRest.id)
-          ]);
+    const { data: prodData } = await supabase
+      .from('products')
+      .select('*')
+      .eq('restaurant_id', restData.id)
+      .order('created_at', { ascending: false });
 
-          if (catRes.status === 'fulfilled' && catRes.value.data) {
-            const sortedCats = catRes.value.data.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
-            setCategories(sortedCats);
-          }
-
-          if (itemRes.status === 'fulfilled' && itemRes.value.data) {
-            setItems(itemRes.value.data.filter((i: any) => i.is_available !== false));
-          }
-
-          if (promoRes.status === 'fulfilled' && promoRes.value.data) {
-            setPromotions(promoRes.value.data.filter((p: any) => p.is_active !== false));
-          }
-
-          if (discRes.status === 'fulfilled' && discRes.value.data) {
-            const sortedRules = discRes.value.data
-              .filter((d: any) => d.is_active !== false)
-              .sort((a: any, b: any) => Number(b.min_amount) - Number(a.min_amount));
-            setDiscountRules(sortedRules);
-          }
-        }
-      } catch (err) {
-        console.error('Errore caricamento dati menu:', err);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    loadData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [slug]);
-
-  // Rotazione automatica delle slide promozioni ogni 4 secondi
-  useEffect(() => {
-    if (promotions.length <= 1) return;
-    const interval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % promotions.length);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [promotions.length]);
-
-  // Calcolo Totale e Sconto
-  const rawTotal = Object.values(cart).reduce((sum, entry) => sum + (entry.item.price * entry.quantity), 0);
-  const activeDiscount = discountRules.find((rule) => rawTotal >= Number(rule.min_amount));
-  const discountPercent = activeDiscount ? Number(activeDiscount.discount_percentage) : 0;
-  const discountAmount = (rawTotal * discountPercent) / 100;
-  const finalTotal = rawTotal - discountAmount;
-
-  const addToCart = (item: any) => {
-    setCart((prev) => {
-      const existing = prev[item.id];
-      const newQty = existing ? existing.quantity + 1 : 1;
-      return { ...prev, [item.id]: { item, quantity: newQty, note: existing?.note || '' } };
-    });
+    if (prodData) setProducts(prodData);
+    setLoading(false);
   };
 
-  const updateQuantity = (itemId: string, delta: number) => {
-    setCart((prev) => {
-      const existing = prev[itemId];
-      if (!existing) return prev;
-      const newQty = existing.quantity + delta;
-      if (newQty <= 0) {
-        const copy = { ...prev };
-        delete copy[itemId];
-        return copy;
-      }
-      return { ...prev, [itemId]: { ...existing, quantity: newQty } };
-    });
+  useEffect(() => { fetchData(); }, []);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setName('');
+    setDescription('');
+    setPrice('');
+    setCategory(categories[0] || 'Antipasti');
+    setImageFile(null);
+    setImagePreview(null);
   };
 
-  const handleSendOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
-    setIsSubmitting(true);
+  const handleAddCategory = async () => {
+    if (!newCatInput.trim() || !restaurant) return;
+    const catName = newCatInput.trim();
+    if (categories.includes(catName)) return;
 
-    const formattedItems = Object.values(cart).map((c) => ({
-      name: c.item.name,
-      quantity: c.quantity,
-      price: c.item.price,
-      itemNote: c.note,
-    }));
+    const { error } = await supabase
+      .from('categories')
+      .insert([{ restaurant_id: restaurant.id, name: catName }]);
 
-    const { error } = await supabase.from('orders').insert({
-      restaurant_id: restaurant?.id,
-      customer_name: customerName,
-      customer_phone: customerPhone,
-      order_type: orderType,
-      pickup_time: pickupTime,
-      items: formattedItems,
-      notes: generalNotes ? `${generalNotes}${discountPercent > 0 ? ` [Sconto ${discountPercent}% applicato]` : ''}` : (discountPercent > 0 ? `[Sconto ${discountPercent}% applicato]` : ''),
-      total_amount: finalTotal,
-      status: 'pending',
-    });
-
-    setIsSubmitting(false);
     if (!error) {
-      setOrderSuccess(true);
-      setCart({});
+      const updated = [...categories, catName];
+      setCategories(updated);
+      setCategory(catName);
+      setNewCatInput('');
     } else {
-      alert(`Errore invio ordine: ${error.message}`);
+      alert(`Errore aggiunta categoria: ${error.message}`);
     }
   };
 
-  const handleSendReservation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const handleDeleteCategory = async (catToDelete: string) => {
+    if (!confirm(`Vuoi davvero eliminare la categoria "${catToDelete}"?`)) return;
 
-    const rwgToken = searchParams.get('rwg_token');
+    const { error } = await supabase
+      .from('categories')
+      .delete()
+      .eq('restaurant_id', restaurant.id)
+      .eq('name', catToDelete);
 
-    const { error } = await supabase.from('reservations').insert({
-      restaurant_id: restaurant?.id,
-      customer_name: customerName,
-      customer_phone: customerPhone,
-      party_size: resGuests,
-      reservation_date: resDate,
-      reservation_time: resTime,
-      notes: `${resNotes || ''}${rwgToken ? ` (Ref: rwg_token)` : ''}`,
-      status: 'pending',
-    });
-
-    setIsSubmitting(false);
     if (!error) {
-      setOrderSuccess(true);
+      const updated = categories.filter((c) => c !== catToDelete);
+      setCategories(updated);
+      if (category === catToDelete && updated.length > 0) {
+        setCategory(updated[0]);
+      }
     } else {
-      alert(`Errore invio prenotazione: ${error.message}`);
+      alert(`Errore eliminazione categoria: ${error.message}`);
     }
   };
 
-  if (loading) return <div className="bg-slate-900 min-h-screen text-slate-400 p-8 text-xs">Caricamento...</div>;
+  const handleEditClick = (p: Product) => {
+    setEditingId(p.id);
+    setName(p.name);
+    setDescription(p.description || '');
+    setPrice(p.price.toString());
+    setCategory(p.category || categories[0]);
+    setImagePreview(p.image_url);
+    setImageFile(null);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const uploadImage = async (file: File) => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${restaurant.id}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('restaurant-media')
+      .upload(fileName, file, { upsert: true });
+
+    if (uploadError) return null;
+    const { data } = supabase.storage.from('restaurant-media').getPublicUrl(fileName);
+    return data.publicUrl;
+  };
+
+  const handleSaveProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !price || !restaurant) return;
+    setSaving(true);
+
+    let imageUrl = imagePreview;
+    if (imageFile) {
+      const uploadedUrl = await uploadImage(imageFile);
+      if (uploadedUrl) imageUrl = uploadedUrl;
+    }
+
+    const payload: any = {
+      restaurant_id: restaurant.id,
+      name,
+      description,
+      price: parseFloat(price.replace(',', '.')),
+      category,
+      image_url: imageUrl,
+    };
+
+    let error;
+    if (editingId) {
+      const res = await supabase.from('products').update(payload).eq('id', editingId);
+      error = res.error;
+    } else {
+      const res = await supabase.from('products').insert([payload]);
+      error = res.error;
+    }
+
+    if (!error) {
+      resetForm();
+      fetchData();
+    } else {
+      alert(`Errore: ${error.message}`);
+    }
+    setSaving(false);
+  };
+
+  const toggleAvailability = async (id: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from('products')
+      .update({ is_available: !currentStatus })
+      .eq('id', id);
+
+    if (!error) fetchData();
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!confirm('Eliminare questo piatto dal menu?')) return;
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (!error) fetchData();
+  };
+
+  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento menu...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white pb-24">
-      <div className="max-w-xl mx-auto p-4 space-y-6">
+    <div className="min-h-screen bg-slate-900 text-white p-6">
+      <div className="max-w-4xl mx-auto space-y-8">
         
-        {/* Intestazione e Nome Ristorante */}
-        <header className="text-center space-y-2 pt-4">
-          <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">{restaurant?.name || 'NOM SUSHI VIBES'}</h1>
-          {restaurant?.description && <p className="text-xs text-slate-400 max-w-sm mx-auto">{restaurant.description}</p>}
-        </header>
-
-        {/* BACHECA SLIDE PROMOZIONI */}
-        {promotions.length > 0 && (
-          <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 p-4 rounded-xl shadow-lg transition-all">
-            <div className="space-y-1">
-              <span className="bg-amber-500 text-slate-900 font-black text-[9px] uppercase px-2 py-0.5 rounded tracking-widest">
-                Promozione #{currentSlide + 1}
-              </span>
-              <h3 className="font-bold text-sm text-amber-400">{promotions[currentSlide].title}</h3>
-              {promotions[currentSlide].description && (
-                <p className="text-xs text-slate-300">{promotions[currentSlide].description}</p>
-              )}
-            </div>
-            {promotions.length > 1 && (
-              <div className="flex justify-center gap-1.5 mt-3">
-                {promotions.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentSlide(idx)}
-                    className={`h-1.5 rounded-full transition-all ${idx === currentSlide ? 'w-5 bg-amber-500' : 'w-1.5 bg-slate-700'}`}
-                  />
-                ))}
-              </div>
-            )}
+        <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+          <div>
+            <span className="text-xs text-amber-500 font-bold uppercase">Gestione Carta</span>
+            <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
           </div>
-        )}
-
-        {/* Pulsanti Switch: Ordina Online / Prenota Tavolo */}
-        <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs">
-          <button
-            onClick={() => { setActiveTab('order'); setOrderSuccess(false); }}
-            className={`flex-1 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'order' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}
-          >
-            Ordina Online
-          </button>
-          <button
-            onClick={() => { setActiveTab('reserve'); setOrderSuccess(false); }}
-            className={`flex-1 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'reserve' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}
-          >
-            Prenota Tavolo
-          </button>
+          <Link href="/dashboard" className="text-sm bg-slate-800 hover:bg-slate-700 text-amber-500 font-bold px-4 py-2 rounded-xl">
+            ← Torna alla Dashboard
+          </Link>
         </div>
 
-        {orderSuccess ? (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 p-6 rounded-xl text-center space-y-3">
-            <h2 className="text-base font-bold text-emerald-400">Richiesta inviata con successo!</h2>
-            <p className="text-xs text-slate-300">Abbiamo preso in carico la tua richiesta. Riceverai una conferma a breve.</p>
-            <button onClick={() => setOrderSuccess(false)} className="bg-slate-800 text-xs text-white font-semibold px-4 py-2 rounded-lg border border-slate-700">
-              Nuovo Ordine / Prenotazione
+        {/* Gestione Categorie con tabella dedicata 'categories' */}
+        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+          <h2 className="text-sm font-bold text-amber-500">Gestione Categorie Menu</h2>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Crea nuova categoria..."
+              value={newCatInput}
+              onChange={(e) => setNewCatInput(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white flex-1 focus:outline-none focus:border-amber-500"
+            />
+            <button
+              onClick={handleAddCategory}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap transition"
+            >
+              + Aggiungi Categoria
             </button>
           </div>
-        ) : activeTab === 'order' ? (
-          /* TAB MENU & CARRELLO */
-          <div className="space-y-6">
-            {categories.length === 0 || items.every((i) => !i.category_id) ? (
-              <div className="space-y-2">
-                {items.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
-                    <div className="space-y-0.5">
-                      <h3 className="font-bold text-xs text-white">{item.name}</h3>
-                      {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
-                      <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
-                    </div>
-                    <button
-                      onClick={() => addToCart(item)}
-                      className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      Aggiungi
-                    </button>
-                  </div>
-                ))}
+
+          <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-700/60">
+            {categories.map((cat) => (
+              <div key={cat} className="flex items-center gap-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">
+                <span className="text-white">{cat}</span>
+                <button
+                  onClick={() => handleDeleteCategory(cat)}
+                  className="text-rose-400 hover:text-rose-200 font-bold ml-1 px-1 transition"
+                  title="Elimina categoria"
+                >
+                  ✕
+                </button>
               </div>
-            ) : (
-              categories.map((cat) => {
-                const catItems = items.filter((i) => i.category_id === cat.id);
-                if (catItems.length === 0) return null;
+            ))}
+          </div>
+        </div>
 
-                return (
-                  <div key={cat.id} className="space-y-3">
-                    <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
-                    <div className="space-y-2">
-                      {catItems.map((item) => (
-                        <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
-                          <div className="space-y-0.5">
-                            <h3 className="font-bold text-xs text-white">{item.name}</h3>
-                            {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
-                            <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
-                          </div>
-                          <button
-                            onClick={() => addToCart(item)}
-                            className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
-                          >
-                            Aggiungi
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })
+        {/* Form Piatto */}
+        <form onSubmit={handleSaveProduct} className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-amber-500">
+              {editingId ? 'Modifica Piatto' : 'Aggiungi Nuovo Piatto'}
+            </h2>
+            {editingId && (
+              <button type="button" onClick={resetForm} className="text-xs text-slate-400 hover:text-white underline">
+                Annulla Modifica
+              </button>
             )}
+          </div>
 
-            {/* RIEPILOGO CARRELLO & SCONTI CHECKOUT */}
-            {Object.keys(cart).length > 0 && (
-              <form onSubmit={handleSendOrder} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
-                <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine</h3>
-                <div className="space-y-2 divide-y divide-slate-700/50">
-                  {Object.values(cart).map(({ item, quantity }) => (
-                    <div key={item.id} className="pt-2 flex justify-between items-center text-xs">
-                      <div>
-                        <span className="font-bold text-white">{quantity}x {item.name}</span>
-                        <span className="text-slate-400 block font-mono">€{(item.price * quantity).toFixed(2)}</span>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <input
+              type="text"
+              placeholder="Nome Piatto"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+              required
+            />
+
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+            >
+              {categories.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Prezzo (€)"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+              required
+            />
+          </div>
+
+          <input
+            type="text"
+            placeholder="Descrizione (opzionale)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+          />
+
+          <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
+            <div className="w-full flex items-center gap-3">
+              {imagePreview ? (
+                <img src={imagePreview} alt="Anteprima" className="w-12 h-12 rounded object-cover border border-amber-500" />
+              ) : (
+                <div className="w-12 h-12 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500 text-center">No Img</div>
+              )}
+              
+              <div className="flex-1">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-slate-700 file:text-white"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-6 py-3 rounded-lg transition text-xs whitespace-nowrap self-end"
+            >
+              {saving ? 'Salvataggio...' : editingId ? 'Aggiorna Piatto' : 'Aggiungi al Menu'}
+            </button>
+          </div>
+        </form>
+
+        {/* Prodotti Raggruppati sotto le Categorie */}
+        <div className="space-y-6">
+          {categories.map((catName) => {
+            const catProducts = products.filter((p) => (p.category || 'Antipasti') === catName);
+            if (catProducts.length === 0) return null;
+
+            return (
+              <div key={catName} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden space-y-1">
+                <div className="p-4 bg-slate-800/80 border-b border-slate-700 font-bold text-amber-400 text-sm uppercase tracking-wider flex justify-between">
+                  <span>{catName}</span>
+                  <span className="text-xs text-slate-400">({catProducts.length} piatti)</span>
+                </div>
+
+                <div className="divide-y divide-slate-700/60">
+                  {catProducts.map((item) => (
+                    <div key={item.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        {item.image_url ? (
+                          <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded object-cover bg-slate-900" />
+                        ) : (
+                          <div className="w-12 h-12 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-xs text-slate-500">No img</div>
+                        )}
+                        <div>
+                          <h3 className="font-semibold text-base">{item.name}</h3>
+                          <p className="text-xs text-slate-400">{item.description}</p>
+                          <span className="text-amber-500 font-bold text-xs mt-0.5 inline-block">
+                            € {Number(item.price).toFixed(2)}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateQuantity(item.id, -1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">-</button>
-                        <span className="font-bold text-xs">{quantity}</span>
-                        <button type="button" onClick={() => updateQuantity(item.id, 1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">+</button>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                        <button
+                          onClick={() => toggleAvailability(item.id, item.is_available ?? true)}
+                          className={`px-3 py-1.5 rounded text-xs font-bold border transition ${
+                            (item.is_available ?? true)
+                              ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30'
+                              : 'bg-rose-600/20 text-rose-400 border-rose-500/30'
+                          }`}
+                        >
+                          {(item.is_available ?? true) ? 'Visibile' : 'Nascosto'}
+                        </button>
+
+                        <button
+                          onClick={() => handleEditClick(item)}
+                          className="px-3 py-1.5 rounded text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white"
+                        >
+                          Modifica
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteProduct(item.id)}
+                          className="px-3 py-1.5 rounded text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20"
+                        >
+                          Elimina
+                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
-
-                <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-xs space-y-1 font-mono">
-                  <div className="flex justify-between text-slate-400">
-                    <span>Subtotale:</span>
-                    <span>€{rawTotal.toFixed(2)}</span>
-                  </div>
-                  {discountPercent > 0 && (
-                    <div className="flex justify-between text-emerald-400 font-bold">
-                      <span>Sconto Applicato ({discountPercent}%):</span>
-                      <span>-€{discountAmount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-amber-400 font-bold text-sm pt-1 border-t border-slate-800">
-                    <span>Totale Finale:</span>
-                    <span>€{finalTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3 pt-2">
-                  <input
-                    type="text"
-                    placeholder="Il tuo nome *"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-                    required
-                  />
-                  <input
-                    type="tel"
-                    placeholder="Numero di telefono *"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-                    required
-                  />
-                  <div className="flex gap-2 text-xs">
-                    <select
-                      value={orderType}
-                      onChange={(e) => setOrderType(e.target.value as any)}
-                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white flex-1 focus:outline-none focus:border-amber-500"
-                    >
-                      <option value="takeaway">Ritiro d'asporto</option>
-                      <option value="delivery">Consegna a domicilio</option>
-                    </select>
-                    <input
-                      type="time"
-                      value={pickupTime}
-                      onChange={(e) => setPickupTime(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
-                      required
-                    />
-                  </div>
-                  <textarea
-                    placeholder="Note generali o allergie (opzionale)"
-                    value={generalNotes}
-                    onChange={(e) => setGeneralNotes(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-                    rows={2}
-                  />
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg transition-colors text-xs uppercase tracking-wider"
-                  >
-                    {isSubmitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        ) : (
-          /* TAB PRENOTAZIONE TAVOLO */
-          <form onSubmit={handleSendReservation} className="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-4 text-xs">
-            <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Prenota un Tavolo</h3>
-            <input
-              type="text"
-              placeholder="Il tuo nome *"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
-              required
-            />
-            <input
-              type="tel"
-              placeholder="Numero di telefono *"
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
-              required
-            />
-            <div className="grid grid-cols-3 gap-2">
-              <input
-                type="date"
-                value={resDate}
-                onChange={(e) => setResDate(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
-                required
-              />
-              <input
-                type="time"
-                value={resTime}
-                onChange={(e) => setResTime(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
-                required
-              />
-              <input
-                type="number"
-                min="1"
-                max="20"
-                value={resGuests}
-                onChange={(e) => setResGuests(parseInt(e.target.value, 10))}
-                className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
-                required
-              />
-            </div>
-            <textarea
-              placeholder="Note o richieste particolari (opzionale)"
-              value={resNotes}
-              onChange={(e) => setResNotes(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
-              rows={2}
-            />
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg transition-colors uppercase tracking-wider"
-            >
-              {isSubmitting ? 'Invio in corso...' : 'Invia Prenotazione'}
-            </button>
-          </form>
-        )}
+              </div>
+            );
+          })}
+        </div>
 
       </div>
     </div>
-  );
-}
-
-export default function PublicPage() {
-  return (
-    <Suspense fallback={<div className="bg-slate-900 min-h-screen text-slate-400 p-8 text-xs">Caricamento...</div>}>
-      <PublicMenuContent />
-    </Suspense>
   );
 }
