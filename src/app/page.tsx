@@ -22,12 +22,18 @@ function PublicPageContent() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
+  
+  // Date e orari correnti per validazione
+  const todayStr = new Date().toISOString().split('T')[0];
+  const currentTimeStr = new Date().toTimeString().slice(0, 5);
+
+  const [orderDate, setOrderDate] = useState(todayStr);
   const [pickupTime, setPickupTime] = useState('19:30');
   const [generalNotes, setGeneralNotes] = useState('');
 
-  // Stato Prenotazione Tavolo (Telefono o Email flessibili)
+  // Stato Prenotazione Tavolo
   const [resEmail, setResEmail] = useState('');
-  const [resDate, setResDate] = useState(new Date().toISOString().split('T')[0]);
+  const [resDate, setResDate] = useState(todayStr);
   const [resTime, setResTime] = useState('20:00');
   const [resGuests, setResGuests] = useState(2);
   const [resNotes, setResNotes] = useState('');
@@ -60,6 +66,11 @@ function PublicPageContent() {
         if (restRes.status === 'fulfilled' && restRes.value.data) {
           restData = restRes.value.data;
           setRestaurant(restData);
+          
+          // Imposta di default il primo tipo di ordine disponibile se il takeoff è disabilitato
+          if (restData.allow_takeaway === false && restData.allow_delivery === true) {
+            setOrderType('delivery');
+          }
         }
 
         if (prodRes.status === 'fulfilled' && prodRes.value.data) {
@@ -130,6 +141,13 @@ function PublicPageContent() {
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
+    
+    // Validazione orario nel passato per il giorno odierno
+    if (orderDate === todayStr && pickupTime < currentTimeStr) {
+      alert("Non è possibile selezionare un orario già passato per oggi!");
+      return;
+    }
+
     setIsSubmitting(true);
 
     const formattedItems = Object.values(cart).map((c) => ({
@@ -144,7 +162,7 @@ function PublicPageContent() {
       customer_name: customerName,
       customer_phone: customerPhone,
       order_type: orderType,
-      pickup_time: pickupTime,
+      pickup_time: `${orderDate} ${pickupTime}`,
       items: formattedItems,
       notes: generalNotes ? `${generalNotes}${discountPercent > 0 ? ` [Sconto ${discountPercent}% applicato]` : ''}` : (discountPercent > 0 ? `[Sconto ${discountPercent}% applicato]` : ''),
       total_amount: finalTotal,
@@ -166,6 +184,13 @@ function PublicPageContent() {
       alert('Inserisci almeno un recapito tra numero di telefono ed email!');
       return;
     }
+
+    // Validazione orario nel passato per il giorno odierno
+    if (resDate === todayStr && resTime < currentTimeStr) {
+      alert("Non è possibile selezionare un orario già passato per oggi!");
+      return;
+    }
+
     setIsSubmitting(true);
 
     const rwgToken = searchParams.get('rwg_token');
@@ -189,6 +214,10 @@ function PublicPageContent() {
       alert(`Errore invio prenotazione: ${error.message}`);
     }
   };
+
+  // Verifica configurazione asporto/consegna (default true se non specificato)
+  const allowTakeaway = restaurant?.allow_takeaway ?? true;
+  const allowDelivery = restaurant?.allow_delivery ?? true;
 
   if (loading) return <div className="bg-slate-900 min-h-screen text-slate-400 p-8 text-xs">Caricamento...</div>;
 
@@ -342,15 +371,31 @@ function PublicPageContent() {
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
                     required
                   />
-                  <div className="flex gap-2 text-xs">
+                  
+                  {/* Selezione Tipo Ordine (abilitati/disabilitati in base alle impostazioni) e Data/Ora */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                     <select
                       value={orderType}
                       onChange={(e) => setOrderType(e.target.value as any)}
-                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white flex-1 focus:outline-none focus:border-amber-500"
+                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
                     >
-                      <option value="takeaway">Ritiro d'asporto</option>
-                      <option value="delivery">Consegna a domicilio</option>
+                      <option value="takeaway" disabled={!allowTakeaway}>
+                        Ritiro d'asporto {!allowTakeaway ? '(Non disponibile)' : ''}
+                      </option>
+                      <option value="delivery" disabled={!allowDelivery}>
+                        Consegna a domicilio {!allowDelivery ? '(Non disponibile)' : ''}
+                      </option>
                     </select>
+
+                    <input
+                      type="date"
+                      min={todayStr}
+                      value={orderDate}
+                      onChange={(e) => setOrderDate(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+                      required
+                    />
+
                     <input
                       type="time"
                       value={pickupTime}
@@ -359,6 +404,7 @@ function PublicPageContent() {
                       required
                     />
                   </div>
+
                   <textarea
                     placeholder="Note generali o allergie (opzionale)"
                     value={generalNotes}
@@ -406,9 +452,11 @@ function PublicPageContent() {
             </div>
             <p className="text-[10px] text-slate-400 italic">Inserisci almeno un recapito tra Telefono ed Email.</p>
 
+            {/* Selezione Data e Ora con blocco date/orari passati */}
             <div className="grid grid-cols-3 gap-2">
               <input
                 type="date"
+                min={todayStr}
                 value={resDate}
                 onChange={(e) => setResDate(e.target.value)}
                 className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
