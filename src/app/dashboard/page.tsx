@@ -23,9 +23,12 @@ export default function LiveDashboardPage() {
   const [restaurant, setRestaurant] = useState<any>(null);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'reservations'>('reservations');
+  const [activeTab, setActiveTab] = useState<'reservations' | 'orders'>('reservations');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
   const [newOrderAlert, setNewOrderAlert] = useState(false);
+
+  // Stato per la compressione/espansione dei dettagli (Note e Contatti)
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
 
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -115,6 +118,10 @@ export default function LiveDashboardPage() {
     }
   };
 
+  const toggleExpand = (id: string) => {
+    setExpandedCards((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
@@ -122,12 +129,10 @@ export default function LiveDashboardPage() {
 
   if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento ordini live...</div>;
 
-  // Filtraggio Asporto vs Prenotazioni
   const foodOrders = orders.filter((o) => o.notes?.includes('[ORDINE'));
   const tableReservations = orders.filter((o) => !o.notes?.includes('[ORDINE'));
   const rawList = activeTab === 'orders' ? foodOrders : tableReservations;
 
-  // Filtraggio per Stato
   const filteredList = rawList.filter((item) => {
     if (statusFilter === 'all') return true;
     if (statusFilter === 'pending') return item.status === 'pending';
@@ -137,7 +142,6 @@ export default function LiveDashboardPage() {
     return true;
   });
 
-  // Divisione Pranzo (< 16:00) e Cena (>= 16:00)
   const lunchList = filteredList.filter((i) => {
     const hour = parseInt((i.reservation_time || '12:00').split(':')[0], 10);
     return hour < 16;
@@ -154,11 +158,13 @@ export default function LiveDashboardPage() {
 
   const renderCard = (item: OrderItem) => {
     const numPeople = item.guests || item.party_size || 1;
+    const isExpanded = !!expandedCards[item.id];
+    const notesContent = cleanNotes(item.notes);
 
     return (
       <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3 shadow-sm">
         {/* riga 1: Nome, Persone, Orario, Stato */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <h3 className="font-extrabold text-base text-white">{item.customer_name}</h3>
             
@@ -184,50 +190,52 @@ export default function LiveDashboardPage() {
           </div>
         </div>
 
-        {/* riga 2: Recapiti */}
-        <div className="text-xs text-amber-400 font-semibold flex flex-wrap items-center gap-4">
-          <span>📞 {item.customer_phone || 'Nessun telefono'}</span>
-          {item.customer_email && <span>✉️ {item.customer_email}</span>}
-        </div>
+        {/* Dettagli Espandibili (Contatti & Note) */}
+        {isExpanded && (
+          <div className="space-y-2 pt-2 border-t border-slate-700/60 transition-all">
+            {/* Recapiti */}
+            <div className="text-xs text-amber-400 font-semibold flex flex-wrap items-center gap-4">
+              <span>📞 {item.customer_phone || 'Nessun telefono'}</span>
+              {item.customer_email && <span>✉️ {item.customer_email}</span>}
+            </div>
 
-        {/* riga 3: Note */}
-        {cleanNotes(item.notes) && (
-          <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 text-xs text-slate-300">
-            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note:</span>
-            <p className="whitespace-pre-line leading-snug">{cleanNotes(item.notes)}</p>
+            {/* Note */}
+            {notesContent && (
+              <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 text-xs text-slate-300">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note:</span>
+                <p className="whitespace-pre-line leading-snug">{notesContent}</p>
+              </div>
+            )}
           </div>
         )}
 
-        {/* riga 4: Azioni */}
-        <div className="flex items-center justify-between pt-1">
+        {/* riga Azioni: Modifica Stato + Tasto ALTRO */}
+        <div className="flex items-center justify-between pt-1 border-t border-slate-700/40">
+          {/* Selettore Modifica Stato */}
           <div className="flex items-center gap-2">
-            {item.status === 'pending' && (
-              <button
-                onClick={() => handleStatusChange(item.id, 'confirmed')}
-                className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-              >
-                ✓ Conferma
-              </button>
-            )}
-
-            {item.status !== 'completed' && item.status !== 'cancelled' && (
-              <button
-                onClick={() => handleStatusChange(item.id, 'completed')}
-                className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-              >
-                ✓ Segna Completato
-              </button>
-            )}
+            <span className="text-xs text-slate-400 font-medium">Stato:</span>
+            <select
+              value={item.status}
+              onChange={(e) => handleStatusChange(item.id, e.target.value as OrderItem['status'])}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
+            >
+              <option value="pending">⏳ Da Confermare</option>
+              <option value="confirmed">✓ Confermato</option>
+              {activeTab === 'orders' && <option value="preparing">🍳 In Preparazione</option>}
+              {activeTab === 'orders' && <option value="ready">🛵 Pronto</option>}
+              <option value="completed">🎉 Completato</option>
+              <option value="cancelled">✕ Annullato</option>
+            </select>
           </div>
 
-          {item.status !== 'cancelled' && (
-            <button
-              onClick={() => handleStatusChange(item.id, 'cancelled')}
-              className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors"
-            >
-              Annulla
-            </button>
-          )}
+          {/* Tasto ALTRO per Espandere / Comprimere Note e Contatti */}
+          <button
+            onClick={() => toggleExpand(item.id)}
+            className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 py-1 rounded-lg transition-colors flex items-center gap-1"
+          >
+            <span>{isExpanded ? 'Nascondi' : 'Altro'}</span>
+            <span className="text-[10px]">{isExpanded ? '▲' : '▼'}</span>
+          </button>
         </div>
       </div>
     );
@@ -244,7 +252,6 @@ export default function LiveDashboardPage() {
           </div>
         )}
 
-        {/* Navbar Dashboard */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-4 sm:p-5 rounded-xl border border-slate-700 gap-3">
           <div>
             <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Pannello Live</span>
@@ -264,7 +271,6 @@ export default function LiveDashboardPage() {
           </div>
         </header>
 
-        {/* Tab Tipo (Ordini vs Prenotazioni) */}
         <div className="flex border-b border-slate-800 gap-4">
           <button
             onClick={() => setActiveTab('reservations')}
@@ -287,7 +293,6 @@ export default function LiveDashboardPage() {
           </button>
         </div>
 
-        {/* Filtri Stato */}
         <div className="flex flex-wrap gap-1.5 bg-slate-800/60 p-2 rounded-xl border border-slate-700/80 text-xs">
           <button
             onClick={() => setStatusFilter('all')}
@@ -321,14 +326,12 @@ export default function LiveDashboardPage() {
           </button>
         </div>
 
-        {/* Elenco diviso Pranzo / Cena */}
         {filteredList.length === 0 ? (
           <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 text-center text-slate-400 text-xs">
             Nessun elemento corrisponde ai filtri selezionati.
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Blocco Pranzo (< 16:00) */}
             {lunchList.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center gap-2 border-b border-slate-800 pb-1">
@@ -341,7 +344,6 @@ export default function LiveDashboardPage() {
               </section>
             )}
 
-            {/* Blocco Cena (>= 16:00) */}
             {dinnerList.length > 0 && (
               <section className="space-y-3 pt-2">
                 <div className="flex items-center gap-2 border-b border-slate-800 pb-1">
