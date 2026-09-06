@@ -23,13 +23,17 @@ function PublicPageContent() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
   
-  // Date e orari correnti per validazione
-  const todayStr = new Date().toISOString().split('T')[0];
-  const currentTimeStr = new Date().toTimeString().slice(0, 5);
+  // Gestione note individuali per piatto nel carrello (apertura input)
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+
+  // Date e orari correnti per validazione e filtri
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
 
   const [orderDate, setOrderDate] = useState(todayStr);
   const [pickupTime, setPickupTime] = useState('19:30');
-  const [generalNotes, setGeneralNotes] = useState('');
 
   // Stato Prenotazione Tavolo
   const [resEmail, setResEmail] = useState('');
@@ -37,6 +41,7 @@ function PublicPageContent() {
   const [resTime, setResTime] = useState('20:00');
   const [resGuests, setResGuests] = useState(2);
   const [resNotes, setResNotes] = useState('');
+  const [generalNotes, setGeneralNotes] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -137,14 +142,17 @@ function PublicPageContent() {
     });
   };
 
+  const updateItemNote = (productId: string, noteText: string) => {
+    setCart((prev) => {
+      const existing = prev[productId];
+      if (!existing) return prev;
+      return { ...prev, [productId]: { ...existing, note: noteText } };
+    });
+  };
+
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
-    
-    if (orderDate === todayStr && pickupTime < currentTimeStr) {
-      alert("Non è possibile selezionare un orario già passato per oggi!");
-      return;
-    }
 
     setIsSubmitting(true);
 
@@ -183,11 +191,6 @@ function PublicPageContent() {
       return;
     }
 
-    if (resDate === todayStr && resTime < currentTimeStr) {
-      alert("Non è possibile selezionare un orario già passato per oggi!");
-      return;
-    }
-
     setIsSubmitting(true);
 
     const rwgToken = searchParams.get('rwg_token');
@@ -212,8 +215,36 @@ function PublicPageContent() {
     }
   };
 
+  // Generatore di slot orari dinamici (esclude gli orari passati se la data è oggi)
+  const generateTimeSlots = (selectedDate: string) => {
+    const slots = [];
+    for (let h = 11; h <= 23; h++) {
+      for (let m = 0; m < 60; m += 30) {
+        const hourStr = h.toString().padStart(2, '0');
+        const minStr = m.toString().padStart(2, '0');
+        const timeVal = `${hourStr}:${minStr}`;
+
+        // Se siamo a oggi, filtra gli orari già passati
+        if (selectedDate === todayStr) {
+          if (h < currentHour || (h === currentHour && m <= currentMinute)) {
+            continue;
+          }
+        }
+        slots.push(timeVal);
+      }
+    }
+    // Assicura che ci sia almeno uno slot valido selezionabile
+    if (slots.length === 0) {
+      slots.push("23:30");
+    }
+    return slots;
+  };
+
+  const timeSlots = generateTimeSlots(activeTab === 'order' ? orderDate : resDate);
+
   const allowTakeaway = restaurant?.allow_takeaway ?? true;
   const allowDelivery = restaurant?.allow_delivery ?? true;
+  const allowReservations = restaurant?.allow_reservations ?? true;
 
   if (loading) return <div className="bg-slate-900 min-h-screen text-slate-400 p-8 text-xs">Caricamento...</div>;
 
@@ -221,7 +252,6 @@ function PublicPageContent() {
     <div className="min-h-screen bg-slate-900 text-white pb-24">
       <div className="max-w-xl mx-auto p-4 space-y-6">
         
-        {/* Intestazione e Biografia con whitespace-pre-line per mantenere punteggiatura e a capo */}
         <header className="text-center space-y-2 pt-4">
           <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">{restaurant?.name || 'NOM SUSHI VIBES'}</h1>
           {restaurant?.description && (
@@ -256,19 +286,22 @@ function PublicPageContent() {
           </div>
         )}
 
-        <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs">
+        {/* Mostra la tab Prenota Tavolo solo se allowReservations è true */}
+        <div className={`flex bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs ${!allowReservations ? 'grid grid-cols-1' : 'grid grid-cols-2 gap-1'}`}>
           <button
             onClick={() => { setActiveTab('order'); setOrderSuccess(false); }}
-            className={`flex-1 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'order' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}
+            className={`py-2.5 rounded-lg font-bold transition-all ${activeTab === 'order' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}
           >
             Ordina Online
           </button>
-          <button
-            onClick={() => { setActiveTab('reserve'); setOrderSuccess(false); }}
-            className={`flex-1 py-2.5 rounded-lg font-bold transition-all ${activeTab === 'reserve' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}
-          >
-            Prenota Tavolo
-          </button>
+          {allowReservations && (
+            <button
+              onClick={() => { setActiveTab('reserve'); setOrderSuccess(false); }}
+              className={`py-2.5 rounded-lg font-bold transition-all ${activeTab === 'reserve' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'}`}
+            >
+              Prenota Tavolo
+            </button>
+          )}
         </div>
 
         {orderSuccess ? (
@@ -341,17 +374,43 @@ function PublicPageContent() {
               <form onSubmit={handleSendOrder} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
                 <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine ({orderType === 'takeaway' ? 'Ritiro' : 'Consegna'})</h3>
                 <div className="space-y-2 divide-y divide-slate-700/50">
-                  {Object.values(cart).map(({ product, quantity }) => (
-                    <div key={product.id} className="pt-2 flex justify-between items-center text-xs">
-                      <div>
-                        <span className="font-bold text-white">{quantity}x {product.name}</span>
-                        <span className="text-slate-400 block font-mono">€{(product.price * quantity).toFixed(2)}</span>
+                  {Object.values(cart).map(({ product, quantity, note }) => (
+                    <div key={product.id} className="pt-2 space-y-2 text-xs">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="font-bold text-white">{quantity}x {product.name}</span>
+                          <span className="text-slate-400 block font-mono">€{(product.price * quantity).toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {/* Pulsante Nota per singolo piatto */}
+                          <button
+                            type="button"
+                            title="Aggiungi nota al piatto"
+                            onClick={() => setEditingNoteId(editingNoteId === product.id ? null : product.id)}
+                            className={`p-1.5 rounded-lg border transition ${note ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-slate-700 text-slate-300 border-slate-600 hover:text-white'}`}
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button type="button" onClick={() => updateQuantity(product.id, -1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">-</button>
+                          <span className="font-bold text-xs">{quantity}</span>
+                          <button type="button" onClick={() => updateQuantity(product.id, 1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">+</button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateQuantity(product.id, -1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">-</button>
-                        <span className="font-bold text-xs">{quantity}</span>
-                        <button type="button" onClick={() => updateQuantity(product.id, 1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">+</button>
-                      </div>
+
+                      {/* Input nota per singolo piatto */}
+                      {(editingNoteId === product.id || note) && (
+                        <div className="pt-1">
+                          <input
+                            type="text"
+                            placeholder="Es. Senza cipolla, ben cotto..."
+                            value={note}
+                            onChange={(e) => updateItemNote(product.id, e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-[11px] text-amber-300 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -391,7 +450,7 @@ function PublicPageContent() {
                     required
                   />
 
-                  {/* Selezione Data e Ora Ritiro/Consegna nel carrello */}
+                  {/* Selezione Data e Ora con slot oscurati se passati */}
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <input
                       type="date"
@@ -402,13 +461,16 @@ function PublicPageContent() {
                       required
                     />
 
-                    <input
-                      type="time"
+                    <select
                       value={pickupTime}
                       onChange={(e) => setPickupTime(e.target.value)}
                       className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
                       required
-                    />
+                    >
+                      {timeSlots.map((slot) => (
+                        <option key={slot} value={slot}>{slot}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <textarea
@@ -429,7 +491,7 @@ function PublicPageContent() {
               </form>
             )}
           </div>
-        ) : (
+        ) : allowReservations && (
           <form onSubmit={handleSendReservation} className="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-4 text-xs">
             <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Prenota un Tavolo</h3>
             <input
@@ -467,13 +529,16 @@ function PublicPageContent() {
                 className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
                 required
               />
-              <input
-                type="time"
+              <select
                 value={resTime}
                 onChange={(e) => setResTime(e.target.value)}
                 className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
                 required
-              />
+              >
+                {timeSlots.map((slot) => (
+                  <option key={slot} value={slot}>{slot}</option>
+                ))}
+              </select>
               <input
                 type="number"
                 min="1"
