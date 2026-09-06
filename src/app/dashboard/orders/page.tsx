@@ -5,25 +5,32 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-interface OrderItem {
+interface Product {
   id: string;
-  customer_name: string;
-  customer_phone: string;
-  customer_email?: string;
-  notes: string;
-  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
-  guests: number;
-  reservation_date: string;
-  reservation_time: string;
-  created_at: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  image_url: string | null;
+  is_available: boolean;
 }
 
-export default function LiveOrdersPage() {
+export default function MenuManagementPage() {
   const [restaurant, setRestaurant] = useState<any>(null);
-  const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [newCatInput, setNewCatInput] = useState('');
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'reservations'>('orders');
-  const [newOrderAlert, setNewOrderAlert] = useState(false);
+
+  // Form stato
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+  const [category, setCategory] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -31,256 +38,323 @@ export default function LiveOrdersPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const fetchOrders = async (restaurantId: string) => {
-    const { data, error } = await supabase
-      .from('reservations')
+  const fetchData = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.push('/login'); return; }
+
+    const { data: restData } = await supabase
+      .from('restaurants')
       .select('*')
-      .eq('restaurant_id', restaurantId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!restData) { router.push('/onboarding'); return; }
+
+    setRestaurant(restData);
+    const catList = restData.custom_categories || ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
+    setCategories(catList);
+    setCategory(catList[0] || 'Antipasti');
+
+    const { data: prodData } = await supabase
+      .from('products')
+      .select('*')
+      .eq('restaurant_id', restData.id)
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setOrders(data);
-    }
+    if (prodData) setProducts(prodData);
+    setLoading(false);
   };
 
-  useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+  useEffect(() => { fetchData(); }, []);
 
-      const { data: restData } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
+  const resetForm = () => {
+    setEditingId(null);
+    setName('');
+    setDescription('');
+    setPrice('');
+    setCategory(categories[0] || 'Antipasti');
+    setImageFile(null);
+    setImagePreview(null);
+  };
 
-      if (!restData) { router.push('/onboarding'); return; }
+  const handleAddCategory = async () => {
+    if (!newCatInput.trim()) return;
+    const catName = newCatInput.trim();
+    if (categories.includes(catName)) return;
 
-      setRestaurant(restData);
-      await fetchOrders(restData.id);
-      setLoading(false);
-
-      // Sottoscrizione Realtime per nuovi ordini/prenotazioni
-      const channel = supabase
-        .channel('realtime_orders')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'reservations',
-            filter: `restaurant_id=eq.${restData.id}`,
-          },
-          (payload) => {
-            setOrders((prev) => [payload.new as OrderItem, ...prev]);
-            setNewOrderAlert(true);
-            setTimeout(() => setNewOrderAlert(false), 5000);
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'reservations',
-            filter: `restaurant_id=eq.${restData.id}`,
-          },
-          (payload) => {
-            setOrders((prev) =>
-              prev.map((o) => (o.id === payload.new.id ? (payload.new as OrderItem) : o))
-            );
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    };
-
-    init();
-  }, []);
-
-  // Aggiorna lo stato dell'ordine o prenotazione
-  const handleStatusChange = async (id: string, newStatus: OrderItem['status']) => {
+    const updatedCategories = [...categories, catName];
     const { error } = await supabase
-      .from('reservations')
-      .update({ status: newStatus })
-      .eq('id', id);
+      .from('restaurants')
+      .update({ custom_categories: updatedCategories })
+      .eq('id', restaurant.id);
 
     if (!error) {
-      setOrders(orders.map((o) => (o.id === id ? { ...o, status: newStatus } : o)));
+      setCategories(updatedCategories);
+      setCategory(catName);
+      setNewCatInput('');
+    }
+  };
+
+  const handleEditClick = (p: Product) => {
+    setEditingId(p.id);
+    setName(p.name);
+    setDescription(p.description || '');
+    setPrice(p.price.toString());
+    setCategory(p.category || categories[0]);
+    setImagePreview(p.image_url);
+    setImageFile(null);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const uploadImage = async (file: File) => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${restaurant.id}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('restaurant-media')
+      .upload(fileName, file, { upsert: true });
+
+    if (uploadError) return null;
+    const { data } = supabase.storage.from('restaurant-media').getPublicUrl(fileName);
+    return data.publicUrl;
+  };
+
+  const handleSaveProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !price || !restaurant) return;
+    setSaving(true);
+
+    let imageUrl = imagePreview;
+    if (imageFile) {
+      const uploadedUrl = await uploadImage(imageFile);
+      if (uploadedUrl) imageUrl = uploadedUrl;
+    }
+
+    const payload: any = {
+      restaurant_id: restaurant.id,
+      name,
+      description,
+      price: parseFloat(price.replace(',', '.')),
+      category,
+      image_url: imageUrl,
+    };
+
+    let error;
+    if (editingId) {
+      const res = await supabase.from('products').update(payload).eq('id', editingId);
+      error = res.error;
     } else {
-      alert(`Errore aggiornamento: ${error.message}`);
+      const res = await supabase.from('products').insert([payload]);
+      error = res.error;
     }
+
+    if (!error) {
+      resetForm();
+      fetchData();
+    } else {
+      alert(`Errore: ${error.message}`);
+    }
+    setSaving(false);
   };
 
-  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento ordini live...</div>;
+  const toggleAvailability = async (id: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from('products')
+      .update({ is_available: !currentStatus })
+      .eq('id', id);
 
-  // Filtra ordini d'asporto e prenotazioni tavoli basandosi sulle note
-  const foodOrders = orders.filter((o) => o.notes?.includes('[ORDINE'));
-  const tableReservations = orders.filter((o) => !o.notes?.includes('[ORDINE'));
-
-  const currentList = activeTab === 'orders' ? foodOrders : tableReservations;
-
-  const getStatusBadge = (status: OrderItem['status']) => {
-    switch (status) {
-      case 'pending':
-        return <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full text-xs font-bold">In Attesa</span>;
-      case 'confirmed':
-        return <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2.5 py-1 rounded-full text-xs font-bold">Confermato</span>;
-      case 'preparing':
-        return <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full text-xs font-bold">In Cucinazione</span>;
-      case 'ready':
-        return <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full text-xs font-bold">Pronto</span>;
-      case 'completed':
-        return <span className="bg-slate-700 text-slate-400 border border-slate-600 px-2.5 py-1 rounded-full text-xs font-bold">Completato</span>;
-      case 'cancelled':
-        return <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full text-xs font-bold">Annullato</span>;
-    }
+    if (!error) fetchData();
   };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!confirm('Eliminare questo piatto dal menu?')) return;
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (!error) fetchData();
+  };
+
+  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento menu...</div>;
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-8">
         
-        {/* Banner Avviso Nuovo Ordine Realtime */}
-        {newOrderAlert && (
-          <div className="bg-amber-500 text-slate-900 font-extrabold p-4 rounded-xl shadow-lg animate-bounce flex justify-between items-center">
-            <span>🔔 NUOVA RICHIESTA RICEVUTA IN TEMPO REALE!</span>
-            <button onClick={() => setNewOrderAlert(false)} className="text-xs bg-slate-900 text-white px-2 py-1 rounded">Chiudi</button>
-          </div>
-        )}
-
-        {/* Header Dashboard Ordini */}
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-6 rounded-xl border border-slate-700 gap-4">
+        <div className="flex justify-between items-center border-b border-slate-800 pb-4">
           <div>
-            <span className="text-xs text-amber-500 font-semibold uppercase tracking-wider">Gestione Live</span>
-            <h1 className="text-2xl font-bold">Ordini e Prenotazioni</h1>
-            <p className="text-slate-400 text-xs mt-1">{restaurant?.name}</p>
+            <span className="text-xs text-amber-500 font-bold uppercase">Gestione Carta</span>
+            <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
           </div>
-
-          <div className="flex gap-3">
-            <Link href="/dashboard" className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
-              Menu & Carta
-            </Link>
-            <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
-              Impostazioni
-            </Link>
-          </div>
-        </header>
-
-        {/* Tab Switcher */}
-        <div className="flex border-b border-slate-800 gap-4">
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'orders' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>🛍️ Ordini d'Asporto / Delivery</span>
-            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-xs">{foodOrders.length}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('reservations')}
-            className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'reservations' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>📅 Prenotazioni Tavolo</span>
-            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-xs">{tableReservations.length}</span>
-          </button>
+          <Link href="/dashboard" className="text-sm bg-slate-800 hover:bg-slate-700 text-amber-500 font-bold px-4 py-2 rounded-xl">
+            ← Torna agli Ordini Live
+          </Link>
         </div>
 
-        {/* Lista Live */}
-        <section className="space-y-4">
-          {currentList.length === 0 ? (
-            <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 text-center text-slate-400 text-sm">
-              Nessuna richiesta ricevuta in questa sezione.
+        {/* Gestione Categorie */}
+        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-3">
+          <h2 className="text-sm font-bold text-amber-500">Crea Nuova Categoria</h2>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newCatInput}
+              onChange={(e) => setNewCatInput(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white flex-1"
+            />
+            <button
+              onClick={handleAddCategory}
+              className="bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs px-4 py-2 rounded-lg"
+            >
+              + Aggiungi Categoria
+            </button>
+          </div>
+        </div>
+
+        {/* Form Piatto */}
+        <form onSubmit={handleSaveProduct} className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-amber-500">
+              {editingId ? 'Modifica Piatto' : 'Aggiungi Nuovo Piatto'}
+            </h2>
+            {editingId && (
+              <button type="button" onClick={resetForm} className="text-xs text-slate-400 hover:text-white underline">
+                Annulla Modifica
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+              required
+            />
+
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+            >
+              {categories.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+
+            <input
+              type="number"
+              step="0.01"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+              required
+            />
+          </div>
+
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+          />
+
+          <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
+            <div className="w-full flex items-center gap-3">
+              {imagePreview ? (
+                <img src={imagePreview} alt="Anteprima" className="w-12 h-12 rounded object-cover border border-amber-500" />
+              ) : (
+                <div className="w-12 h-12 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500 text-center">No Img</div>
+              )}
+              
+              <div className="flex-1">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-slate-700 file:text-white"
+                />
+              </div>
             </div>
-          ) : (
-            currentList.map((item) => (
-              <div key={item.id} className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-700/60 pb-3">
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-bold text-lg">{item.customer_name}</h3>
-                      {getStatusBadge(item.status)}
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-6 py-3 rounded-lg transition text-xs whitespace-nowrap self-end"
+            >
+              {saving ? 'Salvataggio...' : editingId ? 'Aggiorna Piatto' : 'Aggiungi al Menu'}
+            </button>
+          </div>
+        </form>
+
+        {/* Prodotti Raggruppati sotto le Categorie */}
+        <div className="space-y-6">
+          {categories.map((catName) => {
+            const catProducts = products.filter((p) => (p.category || 'Antipasti') === catName);
+            if (catProducts.length === 0) return null;
+
+            return (
+              <div key={catName} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden space-y-1">
+                <div className="p-4 bg-slate-800/80 border-b border-slate-700 font-bold text-amber-400 text-sm uppercase tracking-wider flex justify-between">
+                  <span>{catName}</span>
+                  <span className="text-xs text-slate-400">({catProducts.length} piatti)</span>
+                </div>
+
+                <div className="divide-y divide-slate-700/60">
+                  {catProducts.map((item) => (
+                    <div key={item.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        {item.image_url ? (
+                          <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded object-cover bg-slate-900" />
+                        ) : (
+                          <div className="w-12 h-12 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-xs text-slate-500">No img</div>
+                        )}
+                        <div>
+                          <h3 className="font-semibold text-base">{item.name}</h3>
+                          <p className="text-xs text-slate-400">{item.description}</p>
+                          <span className="text-amber-500 font-bold text-xs mt-0.5 inline-block">
+                            € {Number(item.price).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                        <button
+                          onClick={() => toggleAvailability(item.id, item.is_available ?? true)}
+                          className={`px-3 py-1.5 rounded text-xs font-bold border transition ${
+                            (item.is_available ?? true)
+                              ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30'
+                              : 'bg-rose-600/20 text-rose-400 border-rose-500/30'
+                          }`}
+                        >
+                          {(item.is_available ?? true) ? 'Visibile' : 'Nascosto'}
+                        </button>
+
+                        <button
+                          onClick={() => handleEditClick(item)}
+                          className="px-3 py-1.5 rounded text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white"
+                        >
+                          Modifica
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteProduct(item.id)}
+                          className="px-3 py-1.5 rounded text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20"
+                        >
+                          Elimina
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-xs text-amber-500 font-semibold mt-0.5">
-                      📞 {item.customer_phone} {item.customer_email && `| ✉️ ${item.customer_email}`}
-                    </p>
-                  </div>
-
-                  <div className="text-right text-xs text-slate-400">
-                    <div>Data: <strong className="text-white">{item.reservation_date}</strong> ore <strong className="text-white">{item.reservation_time}</strong></div>
-                    <div className="text-[10px] text-slate-500">Ricevuto il {new Date(item.created_at).toLocaleString('it-IT')}</div>
-                  </div>
-                </div>
-
-                {/* Dettaglio Note/Prodotti */}
-                <div className="bg-slate-900 p-4 rounded-lg border border-slate-700/80 text-sm text-slate-300">
-                  <span className="text-xs font-bold text-slate-400 block mb-1">Dettagli & Note:</span>
-                  <p className="whitespace-pre-line leading-relaxed">{item.notes}</p>
-                  {activeTab === 'reservations' && (
-                    <span className="text-xs text-amber-400 font-semibold mt-2 block">👥 Commensali: {item.guests} persone</span>
-                  )}
-                </div>
-
-                {/* Pulsanti Cambio Stato */}
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <span className="text-xs text-slate-400 mr-2">Aggiorna Stato:</span>
-                  
-                  {item.status === 'pending' && (
-                    <button
-                      onClick={() => handleStatusChange(item.id, 'confirmed')}
-                      className="bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      ✓ Conferma
-                    </button>
-                  )}
-
-                  {activeTab === 'orders' && item.status === 'confirmed' && (
-                    <button
-                      onClick={() => handleStatusChange(item.id, 'preparing')}
-                      className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      🍳 In Preparazione
-                    </button>
-                  )}
-
-                  {activeTab === 'orders' && item.status === 'preparing' && (
-                    <button
-                      onClick={() => handleStatusChange(item.id, 'ready')}
-                      className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      🛵 Pronto per Ritiro/Delivery
-                    </button>
-                  )}
-
-                  {item.status !== 'completed' && item.status !== 'cancelled' && (
-                    <button
-                      onClick={() => handleStatusChange(item.id, 'completed')}
-                      className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      ✓ Segna Completato
-                    </button>
-                  )}
-
-                  {item.status !== 'cancelled' && (
-                    <button
-                      onClick={() => handleStatusChange(item.id, 'cancelled')}
-                      className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ml-auto"
-                    >
-                      Annulla
-                    </button>
-                  )}
+                  ))}
                 </div>
               </div>
-            ))
-          )}
-        </section>
+            );
+          })}
+        </div>
 
       </div>
     </div>

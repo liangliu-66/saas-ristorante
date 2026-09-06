@@ -11,19 +11,17 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  // Form Campi
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [allowTakeaway, setAllowTakeaway] = useState(true);
   const [allowDelivery, setAllowDelivery] = useState(false);
   const [allowReservations, setAllowReservations] = useState(true);
   const [deliveryFee, setDeliveryFee] = useState('2.50');
-  const [minDeliveryAmount, setMinDeliveryAmount] = useState('15.00');
 
-  // Orari (Stringhe semplici per gestione rapida)
-  const [openingHours, setOpeningHours] = useState('12:00 - 15:00, 19:00 - 23:00');
-  const [takeawayHours, setTakeawayHours] = useState('12:00 - 14:30, 19:00 - 22:30');
-  const [deliveryHours, setDeliveryHours] = useState('19:00 - 22:30');
+  // Configurazione Fasce Orarie Selezionabili dai Clienti
+  const [slotStart, setSlotStart] = useState('12:00');
+  const [slotEnd, setSlotEnd] = useState('22:30');
+  const [slotInterval, setSlotInterval] = useState('15');
 
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -50,10 +48,9 @@ export default function SettingsPage() {
         setAllowDelivery(data.allow_delivery ?? false);
         setAllowReservations(data.allow_reservations ?? true);
         setDeliveryFee((data.delivery_fee ?? 2.50).toString());
-        setMinDeliveryAmount((data.min_delivery_amount ?? 15.00).toString());
-        if (data.opening_hours?.text) setOpeningHours(data.opening_hours.text);
-        if (data.takeaway_hours?.text) setTakeawayHours(data.takeaway_hours.text);
-        if (data.delivery_hours?.text) setDeliveryHours(data.delivery_hours.text);
+        setSlotStart(data.time_slot_start || '12:00');
+        setSlotEnd(data.time_slot_end || '22:30');
+        setSlotInterval((data.time_slot_interval || 15).toString());
       }
       setLoading(false);
     };
@@ -75,15 +72,14 @@ export default function SettingsPage() {
         allow_delivery: allowDelivery,
         allow_reservations: allowReservations,
         delivery_fee: parseFloat(deliveryFee),
-        min_delivery_amount: parseFloat(minDeliveryAmount),
-        opening_hours: { text: openingHours },
-        takeaway_hours: { text: takeawayHours },
-        delivery_hours: { text: deliveryHours },
+        time_slot_start: slotStart,
+        time_slot_end: slotEnd,
+        time_slot_interval: parseInt(slotInterval) || 15,
       })
       .eq('id', restaurant.id);
 
     if (!error) {
-      setMessage('Impostazioni salvate con successo!');
+      setMessage('Impostazioni e fasce orarie salvate!');
     } else {
       setMessage(`Errore: ${error.message}`);
     }
@@ -95,130 +91,108 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-2xl mx-auto space-y-6">
-        <Link href="/dashboard" className="text-sm text-slate-400 hover:text-white">← Torna alla Dashboard</Link>
+        <Link href="/dashboard" className="text-sm text-amber-500 font-bold hover:underline">← Torna agli Ordini Live</Link>
         
-        <h1 className="text-2xl font-bold">Gestione Bacheca & Servizi</h1>
+        <h1 className="text-2xl font-bold">Impostazioni Locale & Fasce Orarie</h1>
 
         {message && (
-          <div className="bg-slate-800 border border-amber-500/50 text-amber-400 p-3 rounded-lg text-sm break-words">
+          <div className="bg-slate-800 border border-amber-500/50 text-amber-400 p-3 rounded-lg text-xs">
             {message}
           </div>
         )}
 
         <form onSubmit={handleSave} className="space-y-6">
-          {/* Info Bacheca */}
           <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-            <h2 className="text-lg font-bold text-amber-500">Bacheca del Locale</h2>
+            <h2 className="text-base font-bold text-amber-500">Info Ristorante</h2>
             <div>
               <label className="block text-slate-400 text-xs mb-1">Nome Ristorante</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white"
                 required
               />
             </div>
             <div>
-              <label className="block text-slate-400 text-xs mb-1">Descrizione / Presentazione Locale</label>
+              <label className="block text-slate-400 text-xs mb-1">Descrizione Locale</label>
               <textarea
                 rows={3}
-                placeholder="es. Autentica cucina giapponese nel cuore della città..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white"
               />
             </div>
           </section>
 
-          {/* Abilitazione Servizi */}
+          {/* Configurazione Fasce Orarie Prenotabili */}
           <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-            <h2 className="text-lg font-bold text-amber-500">Servizi e Regole di Consegna</h2>
+            <h2 className="text-base font-bold text-amber-500">Configurazione Fasce Orarie (Ordini & Prenotazioni)</h2>
+            <p className="text-slate-400 text-xs">
+              Definisci gli orari di apertura e gli intervalli per le fasce orarie che appariranno nel menu a tendina per i clienti.
+            </p>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Orario Inizio</label>
+                <input
+                  type="time"
+                  value={slotStart}
+                  onChange={(e) => setSlotStart(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Orario Fine</label>
+                <input
+                  type="time"
+                  value={slotEnd}
+                  onChange={(e) => setSlotEnd(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Intervallo Minuti</label>
+                <select
+                  value={slotInterval}
+                  onChange={(e) => setSlotInterval(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                >
+                  <option value="15">Ogni 15 min</option>
+                  <option value="30">Ogni 30 min</option>
+                  <option value="60">Ogni 60 min</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+            <h2 className="text-base font-bold text-amber-500">Servizi e Spedizioni</h2>
             
             <div className="space-y-3">
               <label className="flex items-center gap-3">
                 <input type="checkbox" checked={allowTakeaway} onChange={(e) => setAllowTakeaway(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-                <span className="text-sm">Abilita Ritiro d'Asporto (Takeaway)</span>
+                <span className="text-xs">Abilita Asporto</span>
               </label>
 
               <label className="flex items-center gap-3">
                 <input type="checkbox" checked={allowDelivery} onChange={(e) => setAllowDelivery(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-                <span className="text-sm">Abilita Consegna a Domicilio (Delivery)</span>
+                <span className="text-xs">Abilita Delivery</span>
               </label>
 
               <label className="flex items-center gap-3">
                 <input type="checkbox" checked={allowReservations} onChange={(e) => setAllowReservations(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-                <span className="text-sm">Abilita Prenotazione Tavoli</span>
+                <span className="text-xs">Abilita Prenotazione Tavoli</span>
               </label>
             </div>
-
-            {allowDelivery && (
-              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-700">
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Costo Consegna (€)</label>
-                  <input
-                    type="number" step="0.50"
-                    value={deliveryFee}
-                    onChange={(e) => setDeliveryFee(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Ordine Minimo (€)</label>
-                  <input
-                    type="number" step="1.00"
-                    value={minDeliveryAmount}
-                    onChange={(e) => setMinDeliveryAmount(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm"
-                  />
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* Orari Differenziati */}
-          <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-            <h2 className="text-lg font-bold text-amber-500">Orari di Servizio</h2>
-            
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Orari Apertura Locale (Generale)</label>
-              <input
-                type="text"
-                value={openingHours}
-                onChange={(e) => setOpeningHours(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm"
-              />
-            </div>
-
-            {allowTakeaway && (
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Fasce Orarie Ritiro Asporto</label>
-                <input
-                  type="text"
-                  value={takeawayHours}
-                  onChange={(e) => setTakeawayHours(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm"
-                />
-              </div>
-            )}
-
-            {allowDelivery && (
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Fasce Orarie Consegna a Domicilio</label>
-                <input
-                  type="text"
-                  value={deliveryHours}
-                  onChange={(e) => setDeliveryHours(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm"
-                />
-              </div>
-            )}
           </section>
 
           <button
             type="submit"
             disabled={saving}
-            className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold p-3 rounded-lg transition-colors"
+            className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold p-3 rounded-lg transition-colors text-xs"
           >
             {saving ? 'Salvataggio...' : 'Salva Impostazioni'}
           </button>

@@ -5,30 +5,25 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-interface Product {
+interface OrderItem {
   id: string;
-  name: string;
-  description: string;
-  price: number;
-  category: string;
-  image_url: string | null;
-  is_available: boolean;
+  customer_name: string;
+  customer_phone: string;
+  customer_email?: string;
+  notes: string;
+  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+  guests: number;
+  reservation_date: string;
+  reservation_time: string;
+  created_at: string;
 }
 
-export default function DashboardPage() {
+export default function LiveDashboardPage() {
   const [restaurant, setRestaurant] = useState<any>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Form stato nuovo/modifica prodotto
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [prodName, setProdName] = useState('');
-  const [prodDesc, setProdDesc] = useState('');
-  const [prodPrice, setProdPrice] = useState('');
-  const [prodCategory, setProdCategory] = useState('Antipasti');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'orders' | 'reservations'>('orders');
+  const [newOrderAlert, setNewOrderAlert] = useState(false);
 
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -36,132 +31,86 @@ export default function DashboardPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const fetchRestaurantAndProducts = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push('/login'); return; }
-
-    const { data: restData } = await supabase
-      .from('restaurants')
+  const fetchOrders = async (restaurantId: string) => {
+    const { data, error } = await supabase
+      .from('reservations')
       .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (!restData) { router.push('/onboarding'); return; }
-
-    setRestaurant(restData);
-
-    const { data: prodData } = await supabase
-      .from('products')
-      .select('*')
-      .eq('restaurant_id', restData.id)
+      .eq('restaurant_id', restaurantId)
       .order('created_at', { ascending: false });
 
-    if (prodData) setProducts(prodData);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchRestaurantAndProducts(); }, []);
-
-  const resetForm = () => {
-    setEditingId(null);
-    setProdName('');
-    setProdDesc('');
-    setProdPrice('');
-    setProdCategory('Antipasti');
-    setImageFile(null);
-    setImagePreview(null);
-  };
-
-  const handleEditClick = (p: Product) => {
-    setEditingId(p.id);
-    setProdName(p.name);
-    setProdDesc(p.description || '');
-    setProdPrice(p.price.toString());
-    setProdCategory(p.category || 'Antipasti');
-    setImagePreview(p.image_url);
-    setImageFile(null);
-  };
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file)); // Anteprima istantanea
+    if (!error && data) {
+      setOrders(data);
     }
   };
 
-  const uploadImage = async (file: File) => {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${restaurant.id}/${Date.now()}.${fileExt}`;
-    
-    const { error: uploadError } = await supabase.storage
-      .from('restaurant-media')
-      .upload(fileName, file, { upsert: true });
+  useEffect(() => {
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push('/login'); return; }
 
-    if (uploadError) {
-      console.error('Errore upload immagine:', uploadError);
-      return null;
-    }
+      const { data: restData } = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-    const { data } = supabase.storage.from('restaurant-media').getPublicUrl(fileName);
-    return data.publicUrl;
-  };
+      if (!restData) { router.push('/onboarding'); return; }
 
-  const handleSaveProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!prodName || !prodPrice) return;
-    setSaving(true);
+      setRestaurant(restData);
+      await fetchOrders(restData.id);
+      setLoading(false);
 
-    let imageUrl = imagePreview;
+      // Realtime per Ordini/Prenotazioni
+      const channel = supabase
+        .channel('realtime_live_dashboard')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'reservations',
+            filter: `restaurant_id=eq.${restData.id}`,
+          },
+          (payload) => {
+            setOrders((prev) => [payload.new as OrderItem, ...prev]);
+            setNewOrderAlert(true);
+            setTimeout(() => setNewOrderAlert(false), 5000);
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'reservations',
+            filter: `restaurant_id=eq.${restData.id}`,
+          },
+          (payload) => {
+            setOrders((prev) =>
+              prev.map((o) => (o.id === payload.new.id ? (payload.new as OrderItem) : o))
+            );
+          }
+        )
+        .subscribe();
 
-    if (imageFile) {
-      const uploadedUrl = await uploadImage(imageFile);
-      if (uploadedUrl) imageUrl = uploadedUrl;
-    }
-
-    const payload: any = {
-      restaurant_id: restaurant.id,
-      name: prodName,
-      description: prodDesc,
-      price: parseFloat(prodPrice),
-      category: prodCategory,
-      image_url: imageUrl,
+      return () => {
+        supabase.removeChannel(channel);
+      };
     };
 
-    let error;
-    if (editingId) {
-      const res = await supabase.from('products').update(payload).eq('id', editingId);
-      error = res.error;
-    } else {
-      const res = await supabase.from('products').insert([payload]);
-      error = res.error;
-    }
+    init();
+  }, []);
 
-    if (!error) {
-      resetForm();
-      fetchRestaurantAndProducts();
-    } else {
-      alert(`Errore durante il salvataggio: ${error.message}`);
-    }
-    setSaving(false);
-  };
-
-  const toggleAvailability = async (p: Product) => {
+  const handleStatusChange = async (id: string, newStatus: OrderItem['status']) => {
     const { error } = await supabase
-      .from('products')
-      .update({ is_available: !p.is_available })
-      .eq('id', p.id);
+      .from('reservations')
+      .update({ status: newStatus })
+      .eq('id', id);
 
     if (!error) {
-      setProducts(products.map(item => item.id === p.id ? { ...item, is_available: !item.is_available } : item));
-    }
-  };
-
-  const handleDeleteProduct = async (id: string) => {
-    if (!confirm('Eliminare questo piatto dal menu?')) return;
-    const { error } = await supabase.from('products').delete().eq('id', id);
-    if (!error) {
-      setProducts(products.filter((p) => p.id !== id));
+      setOrders(orders.map((o) => (o.id === id ? { ...o, status: newStatus } : o)));
+    } else {
+      alert(`Errore aggiornamento: ${error.message}`);
     }
   };
 
@@ -170,158 +119,167 @@ export default function DashboardPage() {
     router.push('/login');
   };
 
-  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento...</div>;
+  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento ordini live...</div>;
+
+  const foodOrders = orders.filter((o) => o.notes?.includes('[ORDINE'));
+  const tableReservations = orders.filter((o) => !o.notes?.includes('[ORDINE'));
+  const currentList = activeTab === 'orders' ? foodOrders : tableReservations;
+
+  const getStatusBadge = (status: OrderItem['status']) => {
+    switch (status) {
+      case 'pending':
+        return <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full text-xs font-bold">In Attesa</span>;
+      case 'confirmed':
+        return <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2.5 py-1 rounded-full text-xs font-bold">Confermato</span>;
+      case 'preparing':
+        return <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full text-xs font-bold">In Cucinazione</span>;
+      case 'ready':
+        return <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full text-xs font-bold">Pronto</span>;
+      case 'completed':
+        return <span className="bg-slate-700 text-slate-400 border border-slate-600 px-2.5 py-1 rounded-full text-xs font-bold">Completato</span>;
+      case 'cancelled':
+        return <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full text-xs font-bold">Annullato</span>;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
         
-        {/* Header */}
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-6 rounded-xl border border-slate-700 gap-4">
-  <div>
-    <span className="text-xs text-amber-500 font-semibold uppercase tracking-wider">Locale Attivo</span>
-    <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
-    <p className="text-slate-400 text-xs mt-1">
-      URL Menu: <a href={`/menu/${restaurant?.slug}`} target="_blank" className="text-amber-500 hover:underline">/menu/{restaurant?.slug}</a>
-    </p>
-  </div>
-
-  <div className="flex flex-wrap gap-3">
-    <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 text-sm font-bold px-4 py-2 rounded-lg transition-colors">
-      🔔 Ordini Live
-    </Link>
-    <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
-      Bacheca & Orari
-    </Link>
-    <button onClick={handleLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-lg border border-red-500/20 transition-colors">
-      Esci
-    </button>
-  </div>
-</header>
-
-        {/* Form Gestore con Anteprima Immagine */}
-        <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-bold">{editingId ? 'Modifica Piatto' : 'Aggiungi un Nuovo Piatto'}</h2>
-            {editingId && (
-              <button onClick={resetForm} className="text-xs text-amber-500 underline">Annulla Modifica</button>
-            )}
+        {newOrderAlert && (
+          <div className="bg-amber-500 text-slate-900 font-extrabold p-4 rounded-xl shadow-lg animate-bounce flex justify-between items-center">
+            <span>🔔 NUOVA RICHIESTA RICEVUTA IN TEMPO REALE!</span>
+            <button onClick={() => setNewOrderAlert(false)} className="text-xs bg-slate-900 text-white px-2 py-1 rounded">Chiudi</button>
           </div>
-          
-          <form onSubmit={handleSaveProduct} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <input
-                type="text"
-                placeholder="Nome Piatto"
-                value={prodName}
-                onChange={(e) => setProdName(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
-                required
-              />
+        )}
 
-              <select
-                value={prodCategory}
-                onChange={(e) => setProdCategory(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
-              >
-                <option value="Antipasti">Antipasti</option>
-                <option value="Primi">Primi</option>
-                <option value="Secondi">Secondi</option>
-                <option value="Pizza">Pizza</option>
-                <option value="Dolci">Dolci</option>
-                <option value="Bevande">Bevande</option>
-              </select>
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-6 rounded-xl border border-slate-700 gap-4">
+          <div>
+            <span className="text-xs text-amber-500 font-semibold uppercase tracking-wider">Dashboard Live</span>
+            <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
+            <p className="text-slate-400 text-xs mt-1">
+              URL Menu: <a href="/" target="_blank" className="text-amber-500 hover:underline">Vedi Sito Pubblico</a>
+            </p>
+          </div>
 
-              <input
-                type="number"
-                step="0.01"
-                placeholder="Prezzo (€)"
-                value={prodPrice}
-                onChange={(e) => setProdPrice(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
-                required
-              />
+          <div className="flex flex-wrap gap-3">
+            <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 text-sm font-bold px-4 py-2 rounded-lg transition-colors">
+              📖 Modifica Carta / Menu
+            </Link>
+            <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+              ⚙️ Impostazioni & Orari
+            </Link>
+            <button onClick={handleLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-lg border border-red-500/20 transition-colors">
+              Esci
+            </button>
+          </div>
+        </header>
+
+        <div className="flex border-b border-slate-800 gap-4">
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
+              activeTab === 'orders' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>🛍️ Ordini Asporto & Delivery</span>
+            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-xs">{foodOrders.length}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('reservations')}
+            className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
+              activeTab === 'reservations' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>📅 Prenotazioni Tavolo</span>
+            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-xs">{tableReservations.length}</span>
+          </button>
+        </div>
+
+        <section className="space-y-4">
+          {currentList.length === 0 ? (
+            <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 text-center text-slate-400 text-sm">
+              Nessuna richiesta presente in questa sezione.
             </div>
+          ) : (
+            currentList.map((item) => (
+              <div key={item.id} className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-700/60 pb-3">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <h3 className="font-bold text-lg">{item.customer_name}</h3>
+                      {getStatusBadge(item.status)}
+                    </div>
+                    <p className="text-xs text-amber-500 font-semibold mt-0.5">
+                      📞 {item.customer_phone} {item.customer_email && `| ✉️ ${item.customer_email}`}
+                    </p>
+                  </div>
 
-            <input
-              type="text"
-              placeholder="Descrizione ingredienti..."
-              value={prodDesc}
-              onChange={(e) => setProdDesc(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
-            />
+                  <div className="text-right text-xs text-slate-400">
+                    <div>Data: <strong className="text-white">{item.reservation_date}</strong> ore <strong className="text-white">{item.reservation_time}</strong></div>
+                    <div className="text-[10px] text-slate-500">Ricevuto: {new Date(item.created_at).toLocaleString('it-IT')}</div>
+                  </div>
+                </div>
 
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="w-full flex items-center gap-3">
-                {imagePreview ? (
-                  <img src={imagePreview} alt="Anteprima" className="w-14 h-14 rounded-lg object-cover border border-amber-500/50" />
-                ) : (
-                  <div className="w-14 h-14 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500 text-center p-1">No Anteprima</div>
-                )}
-                
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-400 mb-1">Carica Immagine Piatto</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-700 file:text-white"
-                  />
+                <div className="bg-slate-900 p-4 rounded-lg border border-slate-700/80 text-sm text-slate-300">
+                  <span className="text-xs font-bold text-slate-400 block mb-1">Dettagli:</span>
+                  <p className="whitespace-pre-line leading-relaxed">{item.notes}</p>
+                  {activeTab === 'reservations' && (
+                    <span className="text-xs text-amber-400 font-semibold mt-2 block">👥 Commensali: {item.guests} persone</span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-xs text-slate-400 mr-2">Stato:</span>
+                  
+                  {item.status === 'pending' && (
+                    <button
+                      onClick={() => handleStatusChange(item.id, 'confirmed')}
+                      className="bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      ✓ Conferma
+                    </button>
+                  )}
+
+                  {activeTab === 'orders' && item.status === 'confirmed' && (
+                    <button
+                      onClick={() => handleStatusChange(item.id, 'preparing')}
+                      className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      🍳 In Cucinazione
+                    </button>
+                  )}
+
+                  {activeTab === 'orders' && item.status === 'preparing' && (
+                    <button
+                      onClick={() => handleStatusChange(item.id, 'ready')}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      🛵 Pronto
+                    </button>
+                  )}
+
+                  {item.status !== 'completed' && item.status !== 'cancelled' && (
+                    <button
+                      onClick={() => handleStatusChange(item.id, 'completed')}
+                      className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      ✓ Segna Completato
+                    </button>
+                  )}
+
+                  {item.status !== 'cancelled' && (
+                    <button
+                      onClick={() => handleStatusChange(item.id, 'cancelled')}
+                      className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ml-auto"
+                    >
+                      Annulla
+                    </button>
+                  )}
                 </div>
               </div>
-
-              <button
-                type="submit"
-                disabled={saving}
-                className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-6 py-3 rounded-lg transition-colors whitespace-nowrap self-end"
-              >
-                {saving ? 'Salvataggio...' : editingId ? 'Aggiorna Piatto' : 'Aggiungi Piatto'}
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {/* Lista Piatti Gestore */}
-        <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-          <h2 className="text-lg font-bold">Menu del Locale ({products.length} piatti)</h2>
-
-          {products.length === 0 ? (
-            <p className="text-slate-400 text-sm">Nessun piatto inserito.</p>
-          ) : (
-            <div className="divide-y divide-slate-700">
-              {products.map((item) => (
-                <div key={item.id} className="py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div className="flex items-center gap-4">
-                    {item.image_url ? (
-                      <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded-lg object-cover bg-slate-900" />
-                    ) : (
-                      <div className="w-12 h-12 rounded-lg bg-slate-900 flex items-center justify-center text-xs text-slate-500">No img</div>
-                    )}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold">{item.name}</h3>
-                        <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-amber-400">{item.category}</span>
-                      </div>
-                      <p className="text-xs text-slate-400">{item.description}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-700/50 pt-2 sm:pt-0">
-                    <span className="font-bold text-amber-500">€{Number(item.price).toFixed(2)}</span>
-                    
-                    <button
-                      onClick={() => toggleAvailability(item)}
-                      className={`text-xs px-2 py-1 rounded font-semibold transition-colors ${item.is_available ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}
-                    >
-                      {item.is_available ? 'In Menu' : 'Nascosto in IU'}
-                    </button>
-
-                    <button onClick={() => handleEditClick(item)} className="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Modifica</button>
-                    <button onClick={() => handleDeleteProduct(item.id)} className="text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 px-2 py-1 rounded border border-red-500/20">Elimina</button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            ))
           )}
         </section>
 
