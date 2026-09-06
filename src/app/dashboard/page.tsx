@@ -60,8 +60,8 @@ export default function LiveDashboardPage() {
     return audioCtxRef.current;
   };
 
-  // Funzione per generare i toni audio
-  const playBeep = (freq = 880, duration = 0.3, type: OscillatorType = 'sine') => {
+  // Funzione per generare i toni audio ad ALTO VOLUME (Gain portato a 0.9)
+  const playBeep = (freq = 880, duration = 0.3, type: OscillatorType = 'sawtooth') => {
     try {
       const ctx = getAudioContext();
       if (!ctx) return;
@@ -69,10 +69,12 @@ export default function LiveDashboardPage() {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
-      osc.type = type;
+      osc.type = type; // 'sawtooth' garantisce un timbro squillante e ben udibile
       osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+      
+      // Volume elevato (0.90 su max 1.0)
+      gain.gain.setValueAtTime(0.9, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -231,14 +233,14 @@ export default function LiveDashboardPage() {
     init();
   }, [audioEnabled]);
 
-  // Gestione dell'allarme in loop continuo per ordini in attesa
+  // Gestione dell'allarme ad alto volume per ordini in attesa
   useEffect(() => {
     let intervalId: any;
     if (isAlarmPlaying && audioEnabled) {
       intervalId = setInterval(() => {
-        playBeep(750, 0.25, 'square');
-        setTimeout(() => playBeep(1000, 0.25, 'square'), 300);
-      }, 1500);
+        playBeep(850, 0.25, 'sawtooth');
+        setTimeout(() => playBeep(1200, 0.25, 'sawtooth'), 250);
+      }, 1200);
     }
     return () => {
       if (intervalId) clearInterval(intervalId);
