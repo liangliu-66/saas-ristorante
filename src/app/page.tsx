@@ -18,6 +18,8 @@ interface Product {
 
 interface CartItem extends Product {
   quantity: number;
+  itemNote?: string;
+  showNoteInput?: boolean;
 }
 
 function MainRestaurantContent() {
@@ -26,6 +28,7 @@ function MainRestaurantContent() {
 
   const [restaurant, setRestaurant] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'menu' | 'reservation'>('menu');
 
@@ -37,8 +40,8 @@ function MainRestaurantContent() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
-  const [pickupTime, setPickupTime] = useState('19:30');
-  const [notes, setNotes] = useState('');
+  const [pickupTime, setPickupTime] = useState('');
+  const [generalNotes, setGeneralNotes] = useState('');
   const [sendingOrder, setSendingOrder] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
@@ -47,7 +50,7 @@ function MainRestaurantContent() {
   const [resPhone, setResPhone] = useState('');
   const [resEmail, setResEmail] = useState('');
   const [resDate, setResDate] = useState('');
-  const [resTime, setResTime] = useState('20:00');
+  const [resTime, setResTime] = useState('');
   const [resGuests, setResGuests] = useState('2');
   const [resNotes, setResNotes] = useState('');
   const [sendingRes, setSendingRes] = useState(false);
@@ -57,26 +60,6 @@ function MainRestaurantContent() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
-
-  // Generatore di fasce orarie ogni 15/30 minuti
-  const generateTimeSlots = (start: string, end: string, stepMinutes: number = 30) => {
-    const slots: string[] = [];
-    let [h, m] = start.split(':').map(Number);
-    const [endH, endM] = end.split(':').map(Number);
-
-    while (h < endH || (h === endH && m <= endM)) {
-      const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-      slots.push(timeStr);
-      m += stepMinutes;
-      if (m >= 60) {
-        h += Math.floor(m / 60);
-        m %= 60;
-      }
-    }
-    return slots;
-  };
-
-  const timeSlots = generateTimeSlots('12:00', '22:30', 15);
 
   useEffect(() => {
     if (searchParams?.get('action') === 'reserve') {
@@ -94,6 +77,15 @@ function MainRestaurantContent() {
       if (restData) {
         setRestaurant(restData);
         if (restData.allow_delivery) setOrderType('delivery');
+
+        const catList = restData.custom_categories || ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
+        setCategories(catList);
+
+        const orderSlots = restData.order_time_slots || ['12:00', '12:30', '13:00', '19:30', '20:00'];
+        const resSlots = restData.reservation_time_slots || ['12:30', '13:00', '20:00', '20:30'];
+
+        setPickupTime(orderSlots[0] || '');
+        setResTime(resSlots[0] || '');
 
         const { data: prodData } = await supabase
           .from('products')
@@ -117,7 +109,7 @@ function MainRestaurantContent() {
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+      return [...prev, { ...product, quantity: 1, itemNote: '', showNoteInput: false }];
     });
   };
 
@@ -129,14 +121,31 @@ function MainRestaurantContent() {
     );
   };
 
+  const toggleNoteInput = (productId: string) => {
+    setCart((prev) =>
+      prev.map((item) =>
+        item.id === productId ? { ...item, showNoteInput: !item.showNoteInput } : item
+      )
+    );
+  };
+
+  const updateCartItemNote = (productId: string, note: string) => {
+    setCart((prev) =>
+      prev.map((item) => (item.id === productId ? { ...item, itemNote: note } : item))
+    );
+  };
+
   const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Invio Ordine
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName || !customerPhone || cart.length === 0) return;
     setSendingOrder(true);
+
+    const itemsSummary = cart
+      .map((c) => `${c.quantity}x ${c.name}${c.itemNote ? ` (Modifiche: ${c.itemNote})` : ''}`)
+      .join(', ');
 
     const { error } = await supabase.from('reservations').insert([
       {
@@ -145,7 +154,7 @@ function MainRestaurantContent() {
         customer_phone: customerPhone,
         reservation_date: new Date().toISOString().split('T')[0],
         reservation_time: pickupTime,
-        notes: `[ORDINE ${orderType.toUpperCase()} - ORARIO: ${pickupTime}] ${notes} (GoogleRef: ${rwgToken || 'Direct'}) - Prodotti: ${cart.map((c) => `${c.quantity}x ${c.name}`).join(', ')}`,
+        notes: `[ORDINE ${orderType.toUpperCase()} - ORARIO: ${pickupTime}] ${generalNotes ? `Note: ${generalNotes} | ` : ''}Prodotti: ${itemsSummary}`,
         status: 'pending',
         guests: totalItems,
       },
@@ -164,7 +173,6 @@ function MainRestaurantContent() {
     setSendingOrder(false);
   };
 
-  // Invio Prenotazione (almeno uno tra Phone o Email)
   const handleSendReservation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resName || (!resPhone && !resEmail) || !resDate) {
@@ -199,28 +207,17 @@ function MainRestaurantContent() {
     setSendingRes(false);
   };
 
-  if (loading) {
-    return <div className="min-h-screen bg-slate-900 text-white p-6 flex items-center justify-center">Caricamento...</div>;
-  }
+  if (loading) return <div className="min-h-screen bg-slate-900 text-white p-6 flex items-center justify-center">Caricamento...</div>;
 
-  if (!restaurant) {
-    return (
-      <div className="min-h-screen bg-slate-900 text-white p-6 flex flex-col items-center justify-center text-center">
-        <h1 className="text-2xl font-bold text-red-400">Ristorante Non Trovato</h1>
-      </div>
-    );
-  }
+  const orderTimeSlots: string[] = restaurant?.order_time_slots || [];
+  const reservationTimeSlots: string[] = restaurant?.reservation_time_slots || [];
 
   return (
     <div className="min-h-screen bg-slate-900 text-white pb-28">
-      {/* Header */}
+      {/* Header Ristorante */}
       <header className="bg-slate-800 border-b border-slate-700 p-6 text-center space-y-3">
         <h1 className="text-3xl font-black text-amber-500">{restaurant.name}</h1>
         {restaurant.description && <p className="text-slate-300 text-sm max-w-md mx-auto">{restaurant.description}</p>}
-
-        <div className="text-xs text-slate-400 pt-1 flex justify-center items-center gap-4">
-          {restaurant.opening_hours?.text && <span>🕒 {restaurant.opening_hours.text}</span>}
-        </div>
 
         <div className="flex justify-center gap-2 pt-2 max-w-xs mx-auto">
           <button
@@ -244,40 +241,55 @@ function MainRestaurantContent() {
         </div>
       </header>
 
-      {/* Sezione Menu */}
+      {/* Sezione Menu diviso per Categorie */}
       {activeTab === 'menu' && (
-        <main className="max-w-md mx-auto p-4 space-y-4">
+        <main className="max-w-md mx-auto p-4 space-y-6">
           {products.length === 0 ? (
             <p className="text-slate-400 text-center py-8">Nessun piatto disponibile.</p>
           ) : (
-            products.map((item) => {
-              const inCart = cart.find((c) => c.id === item.id);
+            categories.map((catName) => {
+              const catProducts = products.filter((p) => (p.category || 'Antipasti') === catName);
+              if (catProducts.length === 0) return null;
+
               return (
-                <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center gap-4">
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={item.name} className="w-16 h-16 rounded-lg object-cover bg-slate-900 border border-slate-700" />
-                  ) : (
-                    <div className="w-16 h-16 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500">No Img</div>
-                  )}
+                <div key={catName} className="space-y-3">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-amber-500 border-b border-slate-800 pb-1">
+                    {catName}
+                  </h2>
 
-                  <div className="flex-1">
-                    <h3 className="font-bold text-sm">{item.name}</h3>
-                    <p className="text-xs text-slate-400">{item.description}</p>
-                    <span className="font-bold text-amber-500 text-sm mt-1 block">€{Number(item.price).toFixed(2)}</span>
-                  </div>
+                  <div className="space-y-3">
+                    {catProducts.map((item) => {
+                      const inCart = cart.find((c) => c.id === item.id);
+                      return (
+                        <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center gap-4">
+                          {item.image_url ? (
+                            <img src={item.image_url} alt={item.name} className="w-16 h-16 rounded-lg object-cover bg-slate-900 border border-slate-700" />
+                          ) : (
+                            <div className="w-16 h-16 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500">No Img</div>
+                          )}
 
-                  <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-700">
-                    {inCart ? (
-                      <>
-                        <button onClick={() => removeFromCart(item.id)} className="w-7 h-7 bg-slate-700 rounded text-amber-500 font-bold">-</button>
-                        <span className="text-xs font-bold w-4 text-center">{inCart.quantity}</span>
-                        <button onClick={() => addToCart(item)} className="w-7 h-7 bg-amber-500 text-slate-900 rounded font-bold">+</button>
-                      </>
-                    ) : (
-                      <button onClick={() => addToCart(item)} className="bg-amber-500 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-md">
-                        Aggiungi
-                      </button>
-                    )}
+                          <div className="flex-1">
+                            <h3 className="font-bold text-sm">{item.name}</h3>
+                            <p className="text-xs text-slate-400">{item.description}</p>
+                            <span className="font-bold text-amber-500 text-sm mt-1 block">€{Number(item.price).toFixed(2)}</span>
+                          </div>
+
+                          <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-700">
+                            {inCart ? (
+                              <>
+                                <button onClick={() => removeFromCart(item.id)} className="w-7 h-7 bg-slate-700 rounded text-amber-500 font-bold">-</button>
+                                <span className="text-xs font-bold w-4 text-center">{inCart.quantity}</span>
+                                <button onClick={() => addToCart(item)} className="w-7 h-7 bg-amber-500 text-slate-900 rounded font-bold">+</button>
+                              </>
+                            ) : (
+                              <button onClick={() => addToCart(item)} className="bg-amber-500 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-md">
+                                Aggiungi
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -314,15 +326,20 @@ function MainRestaurantContent() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Orario</label>
+                    <label className="block text-xs text-slate-400 mb-1">Orario Prenotazione</label>
                     <select
                       value={resTime}
                       onChange={(e) => setResTime(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                      required
                     >
-                      {timeSlots.map((slot) => (
-                        <option key={slot} value={slot}>{slot}</option>
-                      ))}
+                      {reservationTimeSlots.length === 0 ? (
+                        <option value="">Nessun orario disponibile</option>
+                      ) : (
+                        reservationTimeSlots.map((slot: string) => (
+                          <option key={slot} value={slot}>{slot}</option>
+                        ))
+                      )}
                     </select>
                   </div>
                 </div>
@@ -353,7 +370,7 @@ function MainRestaurantContent() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Telefono (oppure Email sotto)</label>
+                    <label className="block text-xs text-slate-400 mb-1">Telefono (oppure Email)</label>
                     <input
                       type="tel"
                       value={resPhone}
@@ -363,7 +380,7 @@ function MainRestaurantContent() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Email (oppure Telefono sopra)</label>
+                    <label className="block text-xs text-slate-400 mb-1">Email (oppure Telefono)</label>
                     <input
                       type="email"
                       value={resEmail}
@@ -396,7 +413,6 @@ function MainRestaurantContent() {
         </main>
       )}
 
-      {/* Floating Bar Carrello */}
       {totalItems > 0 && activeTab === 'menu' && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-900/95 border-t border-slate-800 backdrop-blur-md">
           <div className="max-w-md mx-auto flex items-center justify-between bg-amber-500 p-3 rounded-xl text-slate-900">
@@ -414,7 +430,7 @@ function MainRestaurantContent() {
         </div>
       )}
 
-      {/* Modale Checkout Ordine */}
+      {/* Modale Carrello con Icona Nota per Piatto */}
       {isCheckoutOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
@@ -429,11 +445,32 @@ function MainRestaurantContent() {
               </div>
             ) : (
               <form onSubmit={handleSendOrder} className="space-y-4">
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                <div className="space-y-3 max-h-52 overflow-y-auto pr-1">
                   {cart.map((c) => (
-                    <div key={c.id} className="flex justify-between text-sm py-1 border-b border-slate-700/50">
-                      <span>{c.quantity}x {c.name}</span>
-                      <span className="font-semibold">€{(c.price * c.quantity).toFixed(2)}</span>
+                    <div key={c.id} className="bg-slate-900 p-3 rounded-lg border border-slate-700 space-y-2">
+                      <div className="flex justify-between items-center text-sm font-bold">
+                        <div className="flex items-center gap-2">
+                          <span>{c.quantity}x {c.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleNoteInput(c.id)}
+                            className="text-amber-500 hover:text-amber-400 p-1"
+                            title="Aggiungi note/modifiche al piatto"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                        <span className="text-amber-500">€{(c.price * c.quantity).toFixed(2)}</span>
+                      </div>
+
+                      {(c.showNoteInput || c.itemNote) && (
+                        <input
+                          type="text"
+                          value={c.itemNote || ''}
+                          onChange={(e) => updateCartItemNote(c.id, e.target.value)}
+                          className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-[11px] text-white focus:outline-none focus:border-amber-500"
+                        />
+                      )}
                     </div>
                   ))}
                 </div>
@@ -460,15 +497,20 @@ function MainRestaurantContent() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Orario Desiderato Ritiro/Consegna</label>
+                  <label className="block text-xs text-slate-400 mb-1">Orario Desiderato Ordine</label>
                   <select
                     value={pickupTime}
                     onChange={(e) => setPickupTime(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                    required
                   >
-                    {timeSlots.map((slot) => (
-                      <option key={slot} value={slot}>{slot}</option>
-                    ))}
+                    {orderTimeSlots.length === 0 ? (
+                      <option value="">Nessun orario disponibile</option>
+                    ) : (
+                      orderTimeSlots.map((slot: string) => (
+                        <option key={slot} value={slot}>{slot}</option>
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -496,11 +538,11 @@ function MainRestaurantContent() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Note</label>
+                    <label className="block text-xs text-slate-400 mb-1">Note Generali Ordine</label>
                     <textarea
                       rows={2}
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
+                      value={generalNotes}
+                      onChange={(e) => setGeneralNotes(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
