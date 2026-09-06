@@ -254,7 +254,6 @@ function PublicPageContent() {
         ) : activeTab === 'order' ? (
           <div className="space-y-6">
             {categories.map((catName) => {
-              // Confronto flessibile (ignorando maiuscole/minuscole e spazi)
               const catProducts = products.filter((p) => 
                 p.category && p.category.trim().toLowerCase() === catName.trim().toLowerCase()
               );
@@ -292,38 +291,94 @@ function PublicPageContent() {
               );
             })}
 
-            {/* Prodotti senza categoria o con categoria non censita */}
-            {products.filter((product) => !product.category || !categories.some((catName) => catName.trim().toLowerCase() === product.category.trim().toLowerCase())).length > 0 && (
-              <div className="space-y-3">
-                <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">Altro</h2>
-                <div className="space-y-2">
-                  {products
-                    .filter((product) => !product.category || !categories.some((catName) => catName.trim().toLowerCase() === product.category.trim().toLowerCase()))
-                    .map((product) => (
-                      <div key={product.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
-                        <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
-                          {product.image_url ? (
-                            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
-                          )}
-                        </div>
-                        <div className="space-y-0.5 flex-1">
-                          <h3 className="font-bold text-xs text-white">{product.name}</h3>
-                          {product.description && <p className="text-[11px] text-slate-400">{product.description}</p>}
-                          <span className="font-mono text-amber-400 font-bold text-xs">€{Number(product.price).toFixed(2)}</span>
-                        </div>
-                        <button
-                          onClick={() => addToCart(product)}
-                          className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
-                        >
-                          Aggiungi
-                        </button>
+            {Object.keys(cart).length > 0 && (
+              <form onSubmit={handleSendOrder} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
+                <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine</h3>
+                <div className="space-y-2 divide-y divide-slate-700/50">
+                  {Object.values(cart).map(({ product, quantity }) => (
+                    <div key={product.id} className="pt-2 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="font-bold text-white">{quantity}x {product.name}</span>
+                        <span className="text-slate-400 block font-mono">€{(product.price * quantity).toFixed(2)}</span>
                       </div>
-                    ))}
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => updateQuantity(product.id, -1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">-</button>
+                        <span className="font-bold text-xs">{quantity}</span>
+                        <button type="button" onClick={() => updateQuantity(product.id, 1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">+</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+
+                <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-xs space-y-1 font-mono">
+                  <div className="flex justify-between text-slate-400">
+                    <span>Subtotale:</span>
+                    <span>€{rawTotal.toFixed(2)}</span>
+                  </div>
+                  {discountPercent > 0 && (
+                    <div className="flex justify-between text-emerald-400 font-bold">
+                      <span>Sconto Applicato ({discountPercent}%):</span>
+                      <span>-€{discountAmount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-amber-400 font-bold text-sm pt-1 border-t border-slate-800">
+                    <span>Totale Finale:</span>
+                    <span>€{finalTotal.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <input
+                    type="text"
+                    placeholder="Il tuo nome *"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Numero di telefono *"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                  <div className="flex gap-2 text-xs">
+                    <select
+                      value={orderType}
+                      onChange={(e) => setOrderType(e.target.value as any)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white flex-1 focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="takeaway">Ritiro d'asporto</option>
+                      <option value="delivery">Consegna a domicilio</option>
+                    </select>
+                    <input
+                      type="time"
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+                      required
+                    />
+                  </div>
+                  <textarea
+                    placeholder="Note generali o allergie (opzionale)"
+                    value={generalNotes}
+                    onChange={(e) => setGeneralNotes(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    rows={2}
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg transition-colors text-xs uppercase tracking-wider"
+                  >
+                    {isSubmitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
+                  </button>
+                </div>
+              </form>
             )}
+          </div>
 
             {/* Prodotti senza categoria */}
             {products.filter((product) => !categories.some((cat) => String(product.category_id) === String(cat.id) || product.category === cat.name || product.category_id === cat.name)).length > 0 && (
