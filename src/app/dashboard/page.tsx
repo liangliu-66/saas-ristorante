@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -35,21 +35,71 @@ export default function LiveDashboardPage() {
   const [selectedDate, setSelectedDate] = useState<string>(todayDate);
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
 
+  // Gestione Audio
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
+
+  const loopAudioRef = useRef<HTMLAudioElement | null>(null);
+  const shortAudioRef = useRef<HTMLAudioElement | null>(null);
+
   const router = useRouter();
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+  // Inizializzazione Audio Sintetico Web Audio API
+  const playSound = (type: 'short' | 'loop') => {
+    if (!audioEnabled) return;
+
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+
+      if (type === 'short') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.5);
+      } else if (type === 'loop') {
+        setIsAlarmPlaying(true);
+      }
+    } catch (e) {
+      console.error('Errore riproduzione audio:', e);
+    }
+  };
+
+  const stopLoopSound = () => {
+    setIsAlarmPlaying(false);
+  };
+
+  const enableAudio = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContext();
+      ctx.resume().then(() => {
+        setAudioEnabled(true);
+        playSound('short'); // Suono di conferma attivazione
+      });
+    } catch (e) {
+      setAudioEnabled(true);
+    }
+  };
+
   const fetchAllData = async (restaurantId: string) => {
-    // Ordini
     const { data: ordData } = await supabase
       .from('orders')
       .select('*')
       .eq('restaurant_id', restaurantId)
       .order('pickup_time', { ascending: true });
 
-    // Prenotazioni
     const { data: resData } = await supabase
       .from('reservations')
       .select('*')
@@ -57,14 +107,18 @@ export default function LiveDashboardPage() {
       .order('reservation_time', { ascending: true });
 
     if (ordData) {
-      setOrdersList(
-        ordData.map((o) => ({
-          ...o,
-          date: o.pickup_date,
-          time: o.pickup_time || '12:00',
-          type: 'order',
-        }))
-      );
+      const formatted = ordData.map((o) => ({
+        ...o,
+        date: o.pickup_date,
+        time: o.pickup_time || '12:00',
+        type: 'order' as const,
+      }));
+      setOrdersList(formatted);
+
+      // Controlla se ci sono ordini da confermare per attivare il loop acustico
+      if (formatted.some((o) => o.status === 'pending' && o.date === todayDate)) {
+        setIsAlarmPlaying(true);
+      }
     }
 
     if (resData) {
@@ -73,7 +127,7 @@ export default function LiveDashboardPage() {
           ...r,
           date: r.reservation_date,
           time: r.reservation_time || '12:00',
-          type: 'reservation',
+          type: 'reservation' as const,
         }))
       );
     }
@@ -96,7 +150,7 @@ export default function LiveDashboardPage() {
       await fetchAllData(restData.id);
       setLoading(false);
 
-      // Listener Realtime per Ordini
+      // Realtime Ordini (Suono Continuo per Asporto/Consegna)
       const ordersChannel = supabase
         .channel('realtime_orders')
         .on(
@@ -111,16 +165,26 @@ export default function LiveDashboardPage() {
                 type: 'order' 
               };
               setOrdersList((prev) => [...prev, newOrd].sort((a, b) => (a.time > b.time ? 1 : -1)));
+              
+              // Attiva il loop se è da confermare
+              if (newOrd.status === 'pending') {
+                setIsAlarmPlaying(true);
+              }
             } else if (payload.eventType === 'UPDATE') {
-              setOrdersList((prev) => 
-                prev.map((o) => (o.id === payload.new.id ? { ...payload.new as any, date: payload.new.pickup_date, time: payload.new.pickup_time || '12:00', type: 'order' } : o))
-              );
+              setOrdersList((prev) => {
+                const updated = prev.map((o) => (o.id === payload.new.id ? { ...payload.new as any, date: payload.new.pickup_date, time: payload.new.pickup_time || '12:00', type: 'order' } : o));
+                // Disattiva il loop se non ci sono più ordini in stato 'pending' per oggi
+                if (!updated.some((o) => o.status === 'pending' && o.date === todayDate)) {
+                  setIsAlarmPlaying(false);
+                }
+                return updated;
+              });
             }
           }
         )
         .subscribe();
 
-      // Listener Realtime per Prenotazioni
+      // Realtime Prenotazioni (Suono Singolo Breve per Tavoli)
       const reservationsChannel = supabase
         .channel('realtime_reservations')
         .on(
@@ -135,6 +199,7 @@ export default function LiveDashboardPage() {
                 type: 'reservation' 
               };
               setReservationsList((prev) => [...prev, newRes].sort((a, b) => (a.time > b.time ? 1 : -1)));
+              playSound('short'); // Suono breve singolo
             } else if (payload.eventType === 'UPDATE') {
               setReservationsList((prev) => 
                 prev.map((r) => (r.id === payload.new.id ? { ...r, ...payload.new as any, date: payload.new.reservation_date, time: payload.new.reservation_time || '12:00', type: 'reservation' } : r))
@@ -151,17 +216,78 @@ export default function LiveDashboardPage() {
     };
 
     init();
-  }, []);
+  }, [audioEnabled]);
+
+  // Gestore Suono Continuo (Allarme)
+  useEffect(() => {
+    let intervalId: any;
+    if (isAlarmPlaying && audioEnabled) {
+      intervalId = setInterval(() => {
+        try {
+          const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+          if (!AudioContext) return;
+          const ctx = new AudioContext();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(600, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1000, ctx.currentTime + 0.3);
+          gain.gain.setValueAtTime(0.15, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.4);
+        } catch (e) {}
+      }, 1200);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isAlarmPlaying, audioEnabled]);
 
   const handleStatusChange = async (id: string, type: 'order' | 'reservation', newStatus: OrderItem['status']) => {
     const tableName = type === 'order' ? 'orders' : 'reservations';
     const { error } = await supabase.from(tableName).update({ status: newStatus }).eq('id', id);
 
     if (!error) {
+      let targetItem: OrderItem | undefined;
+
       if (type === 'order') {
-        setOrdersList(ordersList.map((o) => (o.id === id ? { ...o, status: newStatus } : o)));
+        setOrdersList((prev) => {
+          const nextList = prev.map((o) => {
+            if (o.id === id) {
+              targetItem = { ...o, status: newStatus };
+              return targetItem;
+            }
+            return o;
+          });
+
+          // Se non ci sono altri ordini pending per oggi, fermiamo l'allarme
+          if (!nextList.some((o) => o.status === 'pending' && o.date === todayDate)) {
+            setIsAlarmPlaying(false);
+          }
+          return nextList;
+        });
       } else {
-        setReservationsList(reservationsList.map((r) => (r.id === id ? { ...r, status: newStatus } : r)));
+        setReservationsList((prev) => prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r)));
+      }
+
+      // Notifica il cambio di stato alla route di notifica cliente
+      if (targetItem && type === 'order') {
+        fetch('/api/notify-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: targetItem.id,
+            customerPhone: targetItem.customer_phone,
+            customerEmail: targetItem.customer_email,
+            customerName: targetItem.customer_name,
+            newStatus,
+            orderType: targetItem.order_type,
+            pickupTime: targetItem.time,
+          }),
+        }).catch(() => {});
       }
     } else {
       alert(`Errore aggiornamento: ${error.message}`);
@@ -180,11 +306,8 @@ export default function LiveDashboardPage() {
   if (loading) return <div className="p-8 text-slate-400 bg-slate-900 min-h-screen text-xs">Caricamento in corso...</div>;
 
   const currentRawList = activeTab === 'orders' ? ordersList : reservationsList;
-
-  // Filtra prima per la DATA selezionata nel calendario
   const dateFilteredList = currentRawList.filter((item) => item.date === selectedDate);
 
-  // Poi applica il filtro di STATO
   const finalFilteredList = dateFilteredList.filter((item) => {
     if (statusFilter === 'all') return true;
     if (statusFilter === 'pending') return item.status === 'pending';
@@ -234,7 +357,7 @@ export default function LiveDashboardPage() {
 
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-slate-400">{item.date}</span>
-            {item.status === 'pending' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Da Confermare</span>}
+            {item.status === 'pending' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[11px] font-semibold animate-pulse">Da Confermare</span>}
             {item.status === 'confirmed' && <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Confermato</span>}
             {item.status === 'preparing' && <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">In Cucinazione</span>}
             {item.status === 'ready' && <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Pronto</span>}
@@ -316,6 +439,14 @@ export default function LiveDashboardPage() {
     <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6">
       <div className="max-w-5xl mx-auto space-y-5">
         
+        {/* Banner Allarme Attivo */}
+        {isAlarmPlaying && (
+          <div className="bg-amber-500 text-slate-900 font-black p-3 rounded-xl shadow-lg animate-pulse flex justify-between items-center text-xs">
+            <span>NUOVO ORDINE IN ATTESA DI CONFERMA!</span>
+            <button onClick={stopLoopSound} className="bg-slate-900 text-white px-2.5 py-1 rounded text-[11px]">Silenzia</button>
+          </div>
+        )}
+
         {/* Header Gestore */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-4 sm:p-5 rounded-xl border border-slate-700 gap-3">
           <div>
@@ -324,6 +455,16 @@ export default function LiveDashboardPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
+            {/* Tasto Attivazione Audio Browser */}
+            <button
+              onClick={enableAudio}
+              className={`px-3 py-2 rounded-lg font-bold border transition ${
+                audioEnabled ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse'
+              }`}
+            >
+              {audioEnabled ? 'Audio Attivo' : 'Attiva Audio'}
+            </button>
+
             <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-2 rounded-lg transition-colors">
               Menu
             </Link>
@@ -336,10 +477,8 @@ export default function LiveDashboardPage() {
           </div>
         </header>
 
-        {/* Barra di Selezione Data (Calendario) & Tab Tipo */}
+        {/* Selezione Data e Tabs */}
         <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          
-          {/* Tabs Ordini vs Prenotazioni */}
           <div className="flex gap-2 text-xs">
             <button
               onClick={() => setActiveTab('orders')}
@@ -360,7 +499,6 @@ export default function LiveDashboardPage() {
             </button>
           </div>
 
-          {/* Selezione Data / Calendario */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 font-medium">Data:</span>
             <input
