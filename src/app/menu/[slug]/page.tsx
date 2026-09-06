@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState, use } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 
@@ -25,11 +27,9 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Stato Carrello
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-  // Form Cliente
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
@@ -46,25 +46,35 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
     if (!slug) return;
 
     const fetchMenu = async () => {
-      // Recupero dati ristorante aggiornati dal DB
-      const { data: restData } = await supabase
+      setLoading(true);
+      
+      // 1. Recupera Ristorante direttamente dallo Slug
+      const { data: restData, error: restErr } = await supabase
         .from('restaurants')
         .select('*')
         .eq('slug', slug)
-        .maybeSingle();
+        .single();
+
+      if (restErr) {
+        console.error("Errore recupero ristorante:", restErr);
+      }
 
       if (restData) {
         setRestaurant(restData);
         if (restData.allow_delivery) setOrderType('delivery');
 
-        // Mostra SOLO i piatti con is_available = true (quelli esauriti o rimossi vengono esclusi)
-        const { data: prodData } = await supabase
+        // 2. Recupera SOLO i prodotti attivi (is_available = true)
+        const { data: prodData, error: prodErr } = await supabase
           .from('products')
           .select('*')
           .eq('restaurant_id', restData.id)
           .eq('is_available', true);
 
-        if (prodData) setProducts(prodData);
+        if (prodErr) {
+          console.error("Errore recupero prodotti:", prodErr);
+        } else if (prodData) {
+          setProducts(prodData);
+        }
       }
       setLoading(false);
     };
@@ -96,8 +106,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   const handlePhoneChange = (val: string) => {
-    const cleanVal = val.replace(/[^0-9+]/g, '');
-    setCustomerPhone(cleanVal);
+    setCustomerPhone(val.replace(/[^0-9+]/g, ''));
   };
 
   const handleSendOrder = async (e: React.FormEvent) => {
@@ -112,7 +121,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
           restaurant_id: restaurant.id,
           customer_name: customerName,
           customer_phone: customerPhone,
-          notes: `[ORDINE ${orderType.toUpperCase()}] ${notes} - Articoli: ${cart.map(c => `${c.quantity}x ${c.name}`).join(', ')}`,
+          notes: `[ORDINE ${orderType.toUpperCase()}] ${notes} - Prodotti: ${cart.map(c => `${c.quantity}x ${c.name}`).join(', ')}`,
           status: 'pending',
           guests: totalItems,
           reservation_date: new Date().toISOString().split('T')[0],
@@ -134,24 +143,24 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
   };
 
   if (loading) {
-    return <div className="min-h-screen bg-slate-900 text-white p-6 flex items-center justify-center">Caricamento menu...</div>;
+    return <div className="min-h-screen bg-slate-900 text-white p-6 flex items-center justify-center">Caricamento menu in corso...</div>;
   }
 
   if (!restaurant) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white p-6 flex flex-col items-center justify-center text-center">
+      <div className="min-h-screen bg-slate-900 text-white p-6 flex flex-col items-center justify-center text-center space-y-3">
         <h1 className="text-2xl font-bold text-red-400">Ristorante Non Trovato</h1>
+        <p className="text-slate-400 text-sm">Verifica lo slug nell'URL o riconfigura il nome in dashboard.</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-900 text-white pb-28">
-      {/* Header Ristorante Dinamico dal DB */}
+      {/* Intestazione dinamica del locale */}
       <header className="bg-slate-800 p-6 border-b border-slate-700 text-center space-y-2">
         <h1 className="text-3xl font-bold text-amber-500">{restaurant.name}</h1>
         {restaurant.description && <p className="text-slate-400 text-sm">{restaurant.description}</p>}
-        
         {restaurant.opening_hours?.text && (
           <div className="text-xs text-slate-400 pt-1">
             🕒 Orari: {restaurant.opening_hours.text}
@@ -159,7 +168,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
         )}
       </header>
 
-      {/* Lista Prodotti */}
+      {/* Lista Piatti Attivi */}
       <main className="max-w-md mx-auto p-4 space-y-4">
         {products.length === 0 ? (
           <p className="text-slate-400 text-center py-8">Nessun piatto disponibile al momento.</p>
@@ -169,7 +178,11 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
             return (
               <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center gap-4">
                 {item.image_url ? (
-                  <img src={item.image_url} alt={item.name} className="w-16 h-16 rounded-lg object-cover bg-slate-900" />
+                  <img 
+                    src={item.image_url} 
+                    alt={item.name} 
+                    className="w-16 h-16 rounded-lg object-cover bg-slate-900 border border-slate-700" 
+                  />
                 ) : (
                   <div className="w-16 h-16 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500">No Img</div>
                 )}
@@ -199,7 +212,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
         )}
       </main>
 
-      {/* Floating Cart Bar */}
+      {/* Floating Cart */}
       {totalItems > 0 && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-900/95 border-t border-slate-800 backdrop-blur-md">
           <div className="max-w-md mx-auto flex items-center justify-between bg-amber-500 p-3 rounded-xl text-slate-900">
@@ -217,7 +230,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
         </div>
       )}
 
-      {/* Modal Checkout */}
+      {/* Modal Ordine */}
       {isCheckoutOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
@@ -229,8 +242,8 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
             {orderSuccess ? (
               <div className="text-center py-8 space-y-2">
                 <span className="text-4xl">🎉</span>
-                <h3 className="text-xl font-bold text-emerald-400">Ordine Inviato con Successo!</h3>
-                <p className="text-slate-400 text-xs">Il ristorante ha ricevuto la tua richiesta.</p>
+                <h3 className="text-xl font-bold text-emerald-400">Ordine Inviato!</h3>
+                <p className="text-slate-400 text-xs">Il ristorante ha ricevuto la richiesta.</p>
               </div>
             ) : (
               <form onSubmit={handleSendOrder} className="space-y-4">
@@ -250,7 +263,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
                       onClick={() => setOrderType('takeaway')}
                       className={`p-2 rounded-lg text-xs font-bold border ${orderType === 'takeaway' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700'}`}
                     >
-                      🥡 Asporto (Ritiro)
+                      🥡 Asporto
                     </button>
                   )}
                   {restaurant.allow_delivery && (
@@ -267,7 +280,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
                 <div className="space-y-3">
                   <input
                     type="text"
-                    placeholder="Il tuo Nome e Cognome"
+                    placeholder="Nome e Cognome"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
@@ -276,7 +289,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
 
                   <input
                     type="tel"
-                    placeholder="Numero di Telefono (es. 3391234567)"
+                    placeholder="Telefono (es. 3391234567)"
                     value={customerPhone}
                     onChange={(e) => handlePhoneChange(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
@@ -285,7 +298,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
 
                   <textarea
                     rows={2}
-                    placeholder="Note aggiuntive (es. citofono, allergie, orario...)"
+                    placeholder="Note per il ristorante..."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:border-amber-500"
