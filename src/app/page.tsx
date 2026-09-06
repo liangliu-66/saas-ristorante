@@ -277,7 +277,6 @@ function PublicPageContent() {
               </div>
             ) : (
               categories.map((cat) => {
-                // Filtriamo i piatti associati a questa categoria (supportando sia category_id che category)
                 const catItems = items.filter((i) => i.category_id === cat.id || i.category === cat.name);
                 if (catItems.length === 0) return null;
 
