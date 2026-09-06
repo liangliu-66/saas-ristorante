@@ -46,11 +46,12 @@ function PublicPageContent() {
 
     const loadData = async () => {
       try {
-        // Caricamento Parallelo Resiliente con Promise.allSettled
-        const [restRes, catRes, itemRes, promoRes, discRes] = await Promise.allSettled([
+        // Caricamento parallelo con fallback per le tabelle dei piatti
+        const [restRes, catRes, itemRes, altItemRes, promoRes, discRes] = await Promise.allSettled([
           supabase.from('restaurants').select('*').limit(1).maybeSingle(),
           supabase.from('categories').select('*'),
           supabase.from('items').select('*'),
+          supabase.from('menu_items').select('*'), // Tabella alternativa di riserva
           supabase.from('promotions').select('*'),
           supabase.from('discount_rules').select('*')
         ]);
@@ -62,22 +63,27 @@ function PublicPageContent() {
         }
 
         if (catRes.status === 'fulfilled' && catRes.value.data) {
-          const sortedCats = catRes.value.data.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
-          setCategories(sortedCats);
+          setCategories(catRes.value.data);
         }
 
-        if (itemRes.status === 'fulfilled' && itemRes.value.data) {
-          setItems(itemRes.value.data.filter((i: any) => i.is_available !== false));
+        // Seleziona i piatti dalla tabella items o da menu_items se la prima è vuota
+        let rawItems: any[] = [];
+        if (itemRes.status === 'fulfilled' && itemRes.value.data && itemRes.value.data.length > 0) {
+          rawItems = itemRes.value.data;
+        } else if (altItemRes.status === 'fulfilled' && altItemRes.value.data) {
+          rawItems = altItemRes.value.data;
         }
+
+        console.log("Piatti grezzi ricevuti dal DB:", rawItems);
+        // Mostriamo TUTTI i piatti senza filtri restrittivi sulla disponibilità
+        setItems(rawItems);
 
         if (promoRes.status === 'fulfilled' && promoRes.value.data) {
-          setPromotions(promoRes.value.data.filter((p: any) => p.is_active !== false));
+          setPromotions(promoRes.value.data);
         }
 
         if (discRes.status === 'fulfilled' && discRes.value.data) {
-          const sortedRules = discRes.value.data
-            .filter((d: any) => d.is_active !== false)
-            .sort((a: any, b: any) => Number(b.min_amount) - Number(a.min_amount));
+          const sortedRules = discRes.value.data.sort((a: any, b: any) => Number(b.min_amount) - Number(a.min_amount));
           setDiscountRules(sortedRules);
         }
       } catch (err) {
