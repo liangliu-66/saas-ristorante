@@ -470,9 +470,13 @@ export default function LiveDashboardPage() {
             <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-2 rounded-lg transition-colors">
               Menu
             </Link>
+            <Link href="/dashboard/promotions" className="bg-slate-700 hover:bg-slate-600 text-amber-400 font-bold px-3 py-2 rounded-lg border border-amber-500/20 transition-colors">
+              Promozioni
+            </Link>
             <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-3 py-2 rounded-lg transition-colors">
               Impostazioni
             </Link>
+            
             <button onClick={handleLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold px-3 py-2 rounded-lg border border-red-500/20 transition-colors">
               Esci
             </button>
