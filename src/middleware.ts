@@ -1,5 +1,5 @@
+import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -17,9 +17,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            request.cookies.set(name, value)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
           response = NextResponse.next({
             request,
           });
@@ -31,18 +29,20 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Verifica la sessione corrente dell'utente
+  const { data: { user } } = await supabase.auth.getUser();
 
-  // Se l'utente NON è loggato e prova ad andare in /dashboard, reindirizza a /login
+  // Se l'utente NON è loggato e sta provando ad accedere a una pagina della dashboard
   if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
   }
 
   return response;
 }
 
+// Configura le rotte su cui il middleware deve agire
 export const config = {
   matcher: ['/dashboard/:path*'],
 };
