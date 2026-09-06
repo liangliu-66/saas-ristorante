@@ -38,9 +38,7 @@ export default function LiveDashboardPage() {
   // Gestione Audio
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
-
-  const loopAudioRef = useRef<HTMLAudioElement | null>(null);
-  const shortAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -48,49 +46,62 @@ export default function LiveDashboardPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Inizializzazione Audio Sintetico Web Audio API
-  const playSound = (type: 'short' | 'loop') => {
-    if (!audioEnabled) return;
-
-    try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
-
-      if (type === 'short') {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.5);
-      } else if (type === 'loop') {
-        setIsAlarmPlaying(true);
+  // Inizializza o recupera l'AudioContext del browser
+  const getAudioContext = () => {
+    if (!audioCtxRef.current) {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        audioCtxRef.current = new AudioCtx();
       }
+    }
+    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  };
+
+  // Funzione per generare i toni audio
+  const playBeep = (freq = 880, duration = 0.3, type: OscillatorType = 'sine') => {
+    try {
+      const ctx = getAudioContext();
+      if (!ctx) return;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
     } catch (e) {
-      console.error('Errore riproduzione audio:', e);
+      console.error('Errore riproduzione suono:', e);
     }
   };
 
-  const stopLoopSound = () => {
-    setIsAlarmPlaying(false);
-  };
-
+  // Abilita l'audio dopo interazione utente
   const enableAudio = () => {
-    try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioContext();
+    const ctx = getAudioContext();
+    if (ctx) {
       ctx.resume().then(() => {
         setAudioEnabled(true);
-        playSound('short'); // Suono di conferma attivazione
+        playBeep(880, 0.3, 'sine'); // Suono di test per confermare
       });
-    } catch (e) {
+    } else {
       setAudioEnabled(true);
     }
+  };
+
+  // Esegue un suono di prova manuale
+  const testSound = () => {
+    enableAudio();
+    playBeep(987.77, 0.2, 'triangle');
+    setTimeout(() => playBeep(1318.51, 0.4, 'triangle'), 200);
   };
 
   const fetchAllData = async (restaurantId: string) => {
@@ -115,7 +126,6 @@ export default function LiveDashboardPage() {
       }));
       setOrdersList(formatted);
 
-      // Controlla se ci sono ordini da confermare per attivare il loop acustico
       if (formatted.some((o) => o.status === 'pending' && o.date === todayDate)) {
         setIsAlarmPlaying(true);
       }
@@ -150,7 +160,7 @@ export default function LiveDashboardPage() {
       await fetchAllData(restData.id);
       setLoading(false);
 
-      // Realtime Ordini (Suono Continuo per Asporto/Consegna)
+      // Realtime Ordini (Loop Continuo per Asporto/Consegna)
       const ordersChannel = supabase
         .channel('realtime_orders')
         .on(
@@ -166,14 +176,12 @@ export default function LiveDashboardPage() {
               };
               setOrdersList((prev) => [...prev, newOrd].sort((a, b) => (a.time > b.time ? 1 : -1)));
               
-              // Attiva il loop se è da confermare
               if (newOrd.status === 'pending') {
                 setIsAlarmPlaying(true);
               }
             } else if (payload.eventType === 'UPDATE') {
               setOrdersList((prev) => {
                 const updated = prev.map((o) => (o.id === payload.new.id ? { ...payload.new as any, date: payload.new.pickup_date, time: payload.new.pickup_time || '12:00', type: 'order' } : o));
-                // Disattiva il loop se non ci sono più ordini in stato 'pending' per oggi
                 if (!updated.some((o) => o.status === 'pending' && o.date === todayDate)) {
                   setIsAlarmPlaying(false);
                 }
@@ -184,7 +192,7 @@ export default function LiveDashboardPage() {
         )
         .subscribe();
 
-      // Realtime Prenotazioni (Suono Singolo Breve per Tavoli)
+      // Realtime Prenotazioni (Ping Singolo Breve per Tavoli)
       const reservationsChannel = supabase
         .channel('realtime_reservations')
         .on(
@@ -199,7 +207,12 @@ export default function LiveDashboardPage() {
                 type: 'reservation' 
               };
               setReservationsList((prev) => [...prev, newRes].sort((a, b) => (a.time > b.time ? 1 : -1)));
-              playSound('short'); // Suono breve singolo
+              
+              // Suono breve singolo per prenotazione tavolo
+              if (audioEnabled) {
+                playBeep(659.25, 0.2, 'sine');
+                setTimeout(() => playBeep(880, 0.3, 'sine'), 150);
+              }
             } else if (payload.eventType === 'UPDATE') {
               setReservationsList((prev) => 
                 prev.map((r) => (r.id === payload.new.id ? { ...r, ...payload.new as any, date: payload.new.reservation_date, time: payload.new.reservation_time || '12:00', type: 'reservation' } : r))
@@ -218,28 +231,14 @@ export default function LiveDashboardPage() {
     init();
   }, [audioEnabled]);
 
-  // Gestore Suono Continuo (Allarme)
+  // Gestione dell'allarme in loop continuo per ordini in attesa
   useEffect(() => {
     let intervalId: any;
     if (isAlarmPlaying && audioEnabled) {
       intervalId = setInterval(() => {
-        try {
-          const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-          if (!AudioContext) return;
-          const ctx = new AudioContext();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(600, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(1000, ctx.currentTime + 0.3);
-          gain.gain.setValueAtTime(0.15, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.4);
-        } catch (e) {}
-      }, 1200);
+        playBeep(750, 0.25, 'square');
+        setTimeout(() => playBeep(1000, 0.25, 'square'), 300);
+      }, 1500);
     }
     return () => {
       if (intervalId) clearInterval(intervalId);
@@ -263,7 +262,6 @@ export default function LiveDashboardPage() {
             return o;
           });
 
-          // Se non ci sono altri ordini pending per oggi, fermiamo l'allarme
           if (!nextList.some((o) => o.status === 'pending' && o.date === todayDate)) {
             setIsAlarmPlaying(false);
           }
@@ -273,7 +271,6 @@ export default function LiveDashboardPage() {
         setReservationsList((prev) => prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r)));
       }
 
-      // Notifica il cambio di stato alla route di notifica cliente
       if (targetItem && type === 'order') {
         fetch('/api/notify-order', {
           method: 'POST',
@@ -333,7 +330,6 @@ export default function LiveDashboardPage() {
 
     return (
       <div key={item.id} className="bg-slate-800/80 p-4 rounded-xl border border-slate-700/80 space-y-3">
-        {/* Intestazione Scheda Minimal */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <h3 className="font-bold text-sm text-white">{item.customer_name}</h3>
@@ -366,7 +362,6 @@ export default function LiveDashboardPage() {
           </div>
         </div>
 
-        {/* Comanda Piatti Minimal */}
         {item.type === 'order' && item.items && item.items.length > 0 && (
           <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/60 space-y-1.5">
             <div className="flex justify-between items-center border-b border-slate-800 pb-1 text-[11px]">
@@ -387,7 +382,6 @@ export default function LiveDashboardPage() {
           </div>
         )}
 
-        {/* Dettagli Espandibili */}
         {isExpanded && (
           <div className="space-y-2 pt-2 border-t border-slate-700/60 transition-all">
             <div className="text-xs text-slate-300 font-mono flex flex-wrap items-center gap-4">
@@ -406,7 +400,6 @@ export default function LiveDashboardPage() {
           </div>
         )}
 
-        {/* Riga Azioni */}
         <div className="flex items-center justify-between pt-1 border-t border-slate-700/40">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 font-medium">Stato:</span>
@@ -442,8 +435,8 @@ export default function LiveDashboardPage() {
         {/* Banner Allarme Attivo */}
         {isAlarmPlaying && (
           <div className="bg-amber-500 text-slate-900 font-black p-3 rounded-xl shadow-lg animate-pulse flex justify-between items-center text-xs">
-            <span>NUOVO ORDINE IN ATTESA DI CONFERMA!</span>
-            <button onClick={stopLoopSound} className="bg-slate-900 text-white px-2.5 py-1 rounded text-[11px]">Silenzia</button>
+            <span>ORDINI IN ATTESA DI CONFERMA!</span>
+            <button onClick={() => setIsAlarmPlaying(false)} className="bg-slate-900 text-white px-2.5 py-1 rounded text-[11px]">Silenzia Audio</button>
           </div>
         )}
 
@@ -455,7 +448,7 @@ export default function LiveDashboardPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            {/* Tasto Attivazione Audio Browser */}
+            {/* Tasti Attivazione e Test Audio */}
             <button
               onClick={enableAudio}
               className={`px-3 py-2 rounded-lg font-bold border transition ${
@@ -463,6 +456,13 @@ export default function LiveDashboardPage() {
               }`}
             >
               {audioEnabled ? 'Audio Attivo' : 'Attiva Audio'}
+            </button>
+
+            <button
+              onClick={testSound}
+              className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 rounded-lg font-semibold border border-slate-600 transition"
+            >
+              Test Audio
             </button>
 
             <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-2 rounded-lg transition-colors">
