@@ -26,6 +26,9 @@ function MainRestaurantContent() {
   const searchParams = useSearchParams();
   const rwgToken = searchParams?.get('rwg_token');
 
+  // Data di oggi in formato YYYY-MM-DD per il campo date
+  const todayDate = new Date().toISOString().split('T')[0];
+
   const [restaurant, setRestaurant] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -45,14 +48,15 @@ function MainRestaurantContent() {
   const [sendingOrder, setSendingOrder] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
-  // Form Prenotazione
+  // Form Prenotazione Tavoli
   const [resName, setResName] = useState('');
   const [resPhone, setResPhone] = useState('');
   const [resEmail, setResEmail] = useState('');
-  const [resDate, setResDate] = useState('');
+  const [resDate, setResDate] = useState(todayDate); // Data di default: oggi
   const [resTime, setResTime] = useState('');
   const [resGuests, setResGuests] = useState('2');
   const [resNotes, setResNotes] = useState('');
+  const [resContactError, setResContactError] = useState(false);
   const [sendingRes, setSendingRes] = useState(false);
   const [resSuccess, setResSuccess] = useState(false);
 
@@ -175,19 +179,22 @@ function MainRestaurantContent() {
 
   const handleSendReservation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resName || (!resPhone && !resEmail) || !resDate) {
-      alert("Inserire un numero di telefono oppure una email per la prenotazione.");
+
+    // Validazione: Almeno uno tra Telefono o Email deve essere inserito
+    if (!resPhone.trim() && !resEmail.trim()) {
+      setResContactError(true);
       return;
     }
+    setResContactError(false);
     setSendingRes(true);
 
     const { error } = await supabase.from('reservations').insert([
       {
         restaurant_id: restaurant.id,
         customer_name: resName,
-        customer_phone: resPhone || 'Non specificato',
-        customer_email: resEmail || null,
-        reservation_date: resDate,
+        customer_phone: resPhone.trim() || 'Non specificato',
+        customer_email: resEmail.trim() || null,
+        reservation_date: resDate || todayDate,
         reservation_time: resTime,
         guests: parseInt(resGuests) || 2,
         notes: `[PRENOTAZIONE TAVOLO] ${resNotes} (GoogleRef: ${rwgToken || 'Direct'})`,
@@ -241,7 +248,7 @@ function MainRestaurantContent() {
         </div>
       </header>
 
-      {/* Sezione Menu diviso per Categorie */}
+      {/* Sezione Menu */}
       {activeTab === 'menu' && (
         <main className="max-w-md mx-auto p-4 space-y-6">
           {products.length === 0 ? (
@@ -298,7 +305,7 @@ function MainRestaurantContent() {
         </main>
       )}
 
-      {/* Sezione Prenotazione */}
+      {/* Sezione Prenotazione Tavolo */}
       {activeTab === 'reservation' && (
         <main className="max-w-md mx-auto p-4 space-y-4">
           <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4">
@@ -370,24 +377,37 @@ function MainRestaurantContent() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Telefono (oppure Email)</label>
+                    <label className="block text-xs text-slate-400 mb-1">Telefono</label>
                     <input
                       type="tel"
                       value={resPhone}
-                      onChange={(e) => setResPhone(e.target.value.replace(/[^0-9+]/g, ''))}
+                      onChange={(e) => {
+                        setResPhone(e.target.value.replace(/[^0-9+]/g, ''));
+                        if (resContactError) setResContactError(false);
+                      }}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Email (oppure Telefono)</label>
+                    <label className="block text-xs text-slate-400 mb-1">Email</label>
                     <input
                       type="email"
                       value={resEmail}
-                      onChange={(e) => setResEmail(e.target.value)}
+                      onChange={(e) => {
+                        setResEmail(e.target.value);
+                        if (resContactError) setResContactError(false);
+                      }}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
+
+                  {/* Avviso Validazione Contatti */}
+                  {resContactError && (
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-2.5 rounded-lg text-xs font-semibold text-center">
+                      Inserire almeno uno dei due contatti (Telefono o Email) per proseguire.
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-xs text-slate-400 mb-1">Note</label>
@@ -413,6 +433,7 @@ function MainRestaurantContent() {
         </main>
       )}
 
+      {/* Floating Bar Carrello */}
       {totalItems > 0 && activeTab === 'menu' && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-900/95 border-t border-slate-800 backdrop-blur-md">
           <div className="max-w-md mx-auto flex items-center justify-between bg-amber-500 p-3 rounded-xl text-slate-900">
@@ -430,7 +451,7 @@ function MainRestaurantContent() {
         </div>
       )}
 
-      {/* Modale Carrello con Icona Nota per Piatto */}
+      {/* Modale Carrello */}
       {isCheckoutOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
@@ -455,7 +476,7 @@ function MainRestaurantContent() {
                             type="button"
                             onClick={() => toggleNoteInput(c.id)}
                             className="text-amber-500 hover:text-amber-400 p-1"
-                            title="Aggiungi note/modifiche al piatto"
+                            title="Aggiungi note/modifiche"
                           >
                             ✏️
                           </button>
@@ -468,6 +489,7 @@ function MainRestaurantContent() {
                           type="text"
                           value={c.itemNote || ''}
                           onChange={(e) => updateCartItemNote(c.id, e.target.value)}
+                          placeholder="Note/modifiche per questo piatto..."
                           className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-[11px] text-white focus:outline-none focus:border-amber-500"
                         />
                       )}
