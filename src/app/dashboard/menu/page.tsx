@@ -78,7 +78,7 @@ export default function MenuManagementPage() {
   };
 
   const handleAddCategory = async () => {
-    if (!newCatInput.trim()) return;
+    if (!newCatInput.trim() || !restaurant) return;
     const catName = newCatInput.trim();
     if (categories.includes(catName)) return;
 
@@ -216,7 +216,7 @@ export default function MenuManagementPage() {
           </Link>
         </div>
 
-        {/* Gestione Categorie con pulsante di eliminazione */}
+        {/* Gestione Categorie con visualizzazione ed eliminazione */}
         <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
           <h2 className="text-sm font-bold text-amber-500">Gestione Categorie Menu</h2>
           <div className="flex gap-2">
@@ -235,10 +235,10 @@ export default function MenuManagementPage() {
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-700/60">
             {categories.map((cat) => (
               <div key={cat} className="flex items-center gap-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">
-                <span>{cat}</span>
+                <span className="text-white">{cat}</span>
                 <button
                   onClick={() => handleDeleteCategory(cat)}
                   className="text-rose-400 hover:text-rose-200 font-bold ml-1 px-1 transition"
@@ -376,7 +376,7 @@ export default function MenuManagementPage() {
 
                         <button
                           onClick={() => handleEditClick(item)}
-                          className="px-3 py-1.5 rounded text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white"
+                          className="px-3 py-1.5 rounded text-xs font-semibold bg-slate-750 hover:bg-slate-600 text-white"
                         >
                           Modifica
                         </button>
