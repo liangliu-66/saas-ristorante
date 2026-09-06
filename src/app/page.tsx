@@ -39,25 +39,31 @@ function PublicPageContent() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  useEffect(() => {
+ useEffect(() => {
     const loadData = async () => {
-      const { data: restData } = await supabase.from('restaurants').select('*').limit(1).maybeSingle();
-      if (restData) {
-        setRestaurant(restData);
+      try {
+        const { data: restData } = await supabase.from('restaurants').select('*').limit(1).maybeSingle();
+        if (restData) {
+          setRestaurant(restData);
 
-        const [catRes, itemRes, promoRes, discRes] = await Promise.all([
-          supabase.from('categories').select('*').eq('restaurant_id', restData.id).order('sort_order'),
-          supabase.from('items').select('*').eq('restaurant_id', restData.id).eq('is_available', true),
-          supabase.from('promotions').select('*').eq('restaurant_id', restData.id).eq('is_active', true),
-          supabase.from('discount_rules').select('*').eq('restaurant_id', restData.id).eq('is_active', true).order('min_amount', { ascending: false })
-        ]);
+          // Caricamento indipendente delle tabelle
+          const catRes = await supabase.from('categories').select('*').eq('restaurant_id', restData.id);
+          if (catRes.data) setCategories(catRes.data);
 
-        if (catRes.data) setCategories(catRes.data);
-        if (itemRes.data) setItems(itemRes.data);
-        if (promoRes.data) setPromotions(promoRes.data);
-        if (discRes.data) setDiscountRules(discRes.data);
+          const itemRes = await supabase.from('items').select('*').eq('restaurant_id', restData.id);
+          if (itemRes.data) setItems(itemRes.data);
+
+          const promoRes = await supabase.from('promotions').select('*').eq('restaurant_id', restData.id);
+          if (promoRes.data) setPromotions(promoRes.data);
+
+          const discRes = await supabase.from('discount_rules').select('*').eq('restaurant_id', restData.id);
+          if (discRes.data) setDiscountRules(discRes.data);
+        }
+      } catch (err) {
+        console.error('Errore caricamento dati:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     loadData();
