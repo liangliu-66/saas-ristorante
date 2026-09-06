@@ -9,7 +9,7 @@ function PublicPageContent() {
   const initialAction = searchParams.get('action');
 
   const [restaurant, setRestaurant] = useState<any>(null);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
   const [discountRules, setDiscountRules] = useState<any[]>([]);
@@ -61,13 +61,10 @@ function PublicPageContent() {
           setRestaurant(restData);
         }
 
-        let loadedProducts: any[] = [];
         if (prodRes.status === 'fulfilled' && prodRes.value.data) {
-          loadedProducts = prodRes.value.data;
-          setProducts(loadedProducts);
+          setProducts(prodRes.value.data);
         }
 
-        // Recuperiamo le categorie esattamente come fa la dashboard (dalla colonna custom_categories del ristorante)
         const catList = restData?.custom_categories || ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
         setCategories(catList);
 
@@ -93,7 +90,6 @@ function PublicPageContent() {
     };
   }, []);
 
-  // Rotazione automatica delle slide promozioni ogni 4 secondi
   useEffect(() => {
     if (promotions.length <= 1) return;
     const interval = setInterval(() => {
@@ -102,7 +98,6 @@ function PublicPageContent() {
     return () => clearInterval(interval);
   }, [promotions.length]);
 
-  // Calcolo Totale e Sconto
   const rawTotal = Object.values(cart).reduce((sum, entry) => sum + (entry.product.price * entry.quantity), 0);
   const activeDiscount = discountRules.find((rule) => rawTotal >= Number(rule.min_amount));
   const discountPercent = activeDiscount ? Number(activeDiscount.discount_percentage) : 0;
@@ -195,13 +190,11 @@ function PublicPageContent() {
     <div className="min-h-screen bg-slate-900 text-white pb-24">
       <div className="max-w-xl mx-auto p-4 space-y-6">
         
-        {/* Intestazione e Nome Ristorante */}
         <header className="text-center space-y-2 pt-4">
           <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">{restaurant?.name || 'NOM SUSHI VIBES'}</h1>
           {restaurant?.description && <p className="text-xs text-slate-400 max-w-sm mx-auto">{restaurant.description}</p>}
         </header>
 
-        {/* BACHECA SLIDE PROMOZIONI */}
         {promotions.length > 0 && (
           <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 p-4 rounded-xl shadow-lg transition-all">
             <div className="space-y-1">
@@ -227,7 +220,6 @@ function PublicPageContent() {
           </div>
         )}
 
-        {/* Pulsanti Switch: Ordina Online / Prenota Tavolo */}
         <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs">
           <button
             onClick={() => { setActiveTab('order'); setOrderSuccess(false); }}
@@ -251,16 +243,20 @@ function PublicPageContent() {
               Nuovo Ordine / Prenotazione
             </button>
           </div>
-        )}
+        ) : activeTab === 'order' ? (
+          <div className="space-y-6">
+            {categories.map((catName) => {
+              const catProducts = products.filter((p) => 
+                p.category && p.category.trim().toLowerCase() === catName.trim().toLowerCase()
+              );
+              
+              if (catProducts.length === 0) return null;
 
-            {/* Prodotti senza categoria */}
-            {products.filter((product) => !categories.some((cat) => String(product.category_id) === String(cat.id) || product.category === cat.name || product.category_id === cat.name)).length > 0 && (
-              <div className="space-y-3">
-                <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">Menu</h2>
-                <div className="space-y-2">
-                  {products
-                    .filter((product) => !categories.some((cat) => String(product.category_id) === String(cat.id) || product.category === cat.name || product.category_id === cat.name))
-                    .map((product) => (
+              return (
+                <div key={catName} className="space-y-3">
+                  <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{catName}</h2>
+                  <div className="space-y-2">
+                    {catProducts.map((product) => (
                       <div key={product.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
                         <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
                           {product.image_url ? (
@@ -282,9 +278,10 @@ function PublicPageContent() {
                         </button>
                       </div>
                     ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })}
 
             {Object.keys(cart).length > 0 && (
               <form onSubmit={handleSendOrder} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
