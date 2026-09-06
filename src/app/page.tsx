@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useSearchParams } from 'next/navigation';
 
-export default function PublicPage() {
+function PublicPageContent() {
   const searchParams = useSearchParams();
   const initialAction = searchParams.get('action');
 
@@ -17,7 +17,6 @@ export default function PublicPage() {
     initialAction === 'reserve' ? 'reserve' : 'order'
   );
 
-  // Stato Carrello & Form
   const [cart, setCart] = useState<Record<string, { item: any; quantity: number; note: string }>>({});
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -25,7 +24,6 @@ export default function PublicPage() {
   const [pickupTime, setPickupTime] = useState('19:30');
   const [generalNotes, setGeneralNotes] = useState('');
 
-  // Stato Prenotazione
   const [resDate, setResDate] = useState(new Date().toISOString().split('T')[0]);
   const [resTime, setResTime] = useState('20:00');
   const [resGuests, setResGuests] = useState(2);
@@ -65,7 +63,6 @@ export default function PublicPage() {
     loadData();
   }, []);
 
-  // Rotazione automatica delle slide promozioni ogni 4 secondi
   useEffect(() => {
     if (promotions.length <= 1) return;
     const interval = setInterval(() => {
@@ -74,10 +71,7 @@ export default function PublicPage() {
     return () => clearInterval(interval);
   }, [promotions.length]);
 
-  // Calcolo Totale e Sconto
   const rawTotal = Object.values(cart).reduce((sum, entry) => sum + (entry.item.price * entry.quantity), 0);
-  
-  // Trova la regola di sconto applicabile in base all'importo minimo raggiunto
   const activeDiscount = discountRules.find((rule) => rawTotal >= rule.min_amount);
   const discountPercent = activeDiscount ? activeDiscount.discount_percentage : 0;
   const discountAmount = (rawTotal * discountPercent) / 100;
@@ -168,14 +162,11 @@ export default function PublicPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-white pb-24">
       <div className="max-w-xl mx-auto p-4 space-y-6">
-        
-        {/* Intestazione e Nome Ristorante */}
         <header className="text-center space-y-2 pt-4">
           <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">{restaurant?.name || 'Ristorante'}</h1>
           {restaurant?.description && <p className="text-xs text-slate-400 max-w-sm mx-auto">{restaurant.description}</p>}
         </header>
 
-        {/* BACHECA SLIDE PROMOZIONI (Aggiunta prima dei pulsanti) */}
         {promotions.length > 0 && (
           <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 p-4 rounded-xl shadow-lg transition-all">
             <div className="space-y-1">
@@ -201,7 +192,6 @@ export default function PublicPage() {
           </div>
         )}
 
-        {/* Pulsanti Switch: Ordina Online / Prenota Tavolo */}
         <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs">
           <button
             onClick={() => { setActiveTab('order'); setOrderSuccess(false); }}
@@ -226,7 +216,6 @@ export default function PublicPage() {
             </button>
           </div>
         ) : activeTab === 'order' ? (
-          /* TAB MENU & CARRELLO */
           <div className="space-y-6">
             {categories.map((cat) => {
               const catItems = items.filter((i) => i.category_id === cat.id);
@@ -256,7 +245,6 @@ export default function PublicPage() {
               );
             })}
 
-            {/* RIEPILOGO CARRELLO & SCONTI CHECKOUT */}
             {Object.keys(cart).length > 0 && (
               <form onSubmit={handleSendOrder} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
                 <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine</h3>
@@ -276,7 +264,6 @@ export default function PublicPage() {
                   ))}
                 </div>
 
-                {/* VISUALIZZAZIONE SCONTO APPLICATO */}
                 <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-xs space-y-1 font-mono">
                   <div className="flex justify-between text-slate-400">
                     <span>Subtotale:</span>
@@ -294,7 +281,6 @@ export default function PublicPage() {
                   </div>
                 </div>
 
-                {/* Form Dettagli Cliente */}
                 <div className="space-y-3 pt-2">
                   <input
                     type="text"
@@ -348,7 +334,6 @@ export default function PublicPage() {
             )}
           </div>
         ) : (
-          /* TAB PRENOTAZIONE TAVOLO */
           <form onSubmit={handleSendReservation} className="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-4 text-xs">
             <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Prenota un Tavolo</h3>
             <input
@@ -408,8 +393,15 @@ export default function PublicPage() {
             </button>
           </form>
         )}
-
       </div>
     </div>
+  );
+}
+
+export default function PublicPage() {
+  return (
+    <Suspense fallback={<div className="bg-slate-900 min-h-screen text-slate-400 p-8 text-xs">Caricamento...</div>}>
+      <PublicPageContent />
+    </Suspense>
   );
 }
