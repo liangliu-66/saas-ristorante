@@ -15,7 +15,7 @@ interface Product {
   is_available: boolean;
 }
 
-export default function MenuManagement() {
+export default function MenuManagementPage() {
   const [restaurant, setRestaurant] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -27,7 +27,7 @@ export default function MenuManagement() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
-  const [category, setCategory] = useState('Antipasti');
+  const [category, setCategory] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -38,12 +38,9 @@ export default function MenuManagement() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const fetchRestaurantAndProducts = async () => {
+  const fetchData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/login');
-      return;
-    }
+    if (!user) { router.push('/login'); return; }
 
     const { data: restData } = await supabase
       .from('restaurants')
@@ -51,17 +48,12 @@ export default function MenuManagement() {
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (!restData) {
-      router.push('/onboarding');
-      return;
-    }
+    if (!restData) { router.push('/onboarding'); return; }
 
     setRestaurant(restData);
     const catList = restData.custom_categories || ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
     setCategories(catList);
-    if (!catList.includes(category) && catList.length > 0) {
-      setCategory(catList[0]);
-    }
+    setCategory(catList[0] || 'Antipasti');
 
     const { data: prodData } = await supabase
       .from('products')
@@ -73,9 +65,7 @@ export default function MenuManagement() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchRestaurantAndProducts();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const resetForm = () => {
     setEditingId(null);
@@ -88,7 +78,7 @@ export default function MenuManagement() {
   };
 
   const handleAddCategory = async () => {
-    if (!newCatInput.trim() || !restaurant) return;
+    if (!newCatInput.trim()) return;
     const catName = newCatInput.trim();
     if (categories.includes(catName)) return;
 
@@ -131,7 +121,7 @@ export default function MenuManagement() {
     setName(p.name);
     setDescription(p.description || '');
     setPrice(p.price.toString());
-    setCategory(p.category || categories[0] || 'Antipasti');
+    setCategory(p.category || categories[0]);
     setImagePreview(p.image_url);
     setImageFile(null);
   };
@@ -152,11 +142,7 @@ export default function MenuManagement() {
       .from('restaurant-media')
       .upload(fileName, file, { upsert: true });
 
-    if (uploadError) {
-      console.error('Errore upload immagine:', uploadError);
-      return null;
-    }
-
+    if (uploadError) return null;
     const { data } = supabase.storage.from('restaurant-media').getPublicUrl(fileName);
     return data.publicUrl;
   };
@@ -192,9 +178,9 @@ export default function MenuManagement() {
 
     if (!error) {
       resetForm();
-      fetchRestaurantAndProducts();
+      fetchData();
     } else {
-      alert(`Errore salvataggio: ${error.message}`);
+      alert(`Errore: ${error.message}`);
     }
     setSaving(false);
   };
@@ -205,48 +191,45 @@ export default function MenuManagement() {
       .update({ is_available: !currentStatus })
       .eq('id', id);
 
-    if (!error) fetchRestaurantAndProducts();
+    if (!error) fetchData();
   };
 
   const handleDeleteProduct = async (id: string) => {
-    if (!confirm('Eliminare definitivamente questo piatto?')) return;
+    if (!confirm('Eliminare questo piatto dal menu?')) return;
     const { error } = await supabase.from('products').delete().eq('id', id);
-    if (!error) fetchRestaurantAndProducts();
+    if (!error) fetchData();
   };
 
-  if (loading) {
-    return <div className="min-h-screen bg-slate-900 text-slate-100 p-6">Caricamento menu...</div>;
-  }
+  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento menu...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-6">
+    <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-4xl mx-auto space-y-8">
         
-        {/* Header con Nome Ristorante Dinamico */}
         <div className="flex justify-between items-center border-b border-slate-800 pb-4">
           <div>
             <span className="text-xs text-amber-500 font-bold uppercase">Gestione Carta</span>
             <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
           </div>
-          <Link href="/dashboard" className="text-sm text-amber-500 hover:underline">
-            &larr; Torna alla Dashboard
+          <Link href="/dashboard" className="text-sm bg-slate-800 hover:bg-slate-700 text-amber-500 font-bold px-4 py-2 rounded-xl">
+            ← Torna agli Ordini Live
           </Link>
         </div>
 
-        {/* Gestione Categorie con pulsante di eliminazione integrato */}
+        {/* Gestione Categorie con pulsante di eliminazione */}
         <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
           <h2 className="text-sm font-bold text-amber-500">Gestione Categorie Menu</h2>
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Nome nuova categoria..."
+              placeholder="Crea nuova categoria..."
               value={newCatInput}
               onChange={(e) => setNewCatInput(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded p-2.5 text-xs text-white flex-1 focus:outline-none focus:border-amber-500"
+              className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white flex-1 focus:outline-none focus:border-amber-500"
             />
             <button
               onClick={handleAddCategory}
-              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded transition whitespace-nowrap"
+              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap transition"
             >
               + Aggiungi Categoria
             </button>
@@ -254,11 +237,11 @@ export default function MenuManagement() {
 
           <div className="flex flex-wrap gap-2 pt-1">
             {categories.map((cat) => (
-              <div key={cat} className="flex items-center gap-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs">
+              <div key={cat} className="flex items-center gap-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">
                 <span>{cat}</span>
                 <button
                   onClick={() => handleDeleteCategory(cat)}
-                  className="text-rose-400 hover:text-rose-200 font-bold px-1 py-0.5 rounded transition"
+                  className="text-rose-400 hover:text-rose-200 font-bold ml-1 px-1 transition"
                   title="Elimina categoria"
                 >
                   ✕
@@ -268,7 +251,7 @@ export default function MenuManagement() {
           </div>
         </div>
 
-        {/* Form Gestione Piatto con Anteprima Immagine */}
+        {/* Form Piatto */}
         <form onSubmit={handleSaveProduct} className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-semibold text-amber-500">
@@ -287,14 +270,14 @@ export default function MenuManagement() {
               placeholder="Nome Piatto"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded p-3 text-white focus:outline-none focus:border-amber-500 text-sm"
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
               required
             />
 
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded p-3 text-white focus:outline-none focus:border-amber-500 text-sm"
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
             >
               {categories.map((c) => (
                 <option key={c} value={c}>{c}</option>
@@ -307,17 +290,17 @@ export default function MenuManagement() {
               placeholder="Prezzo (€)"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded p-3 text-white focus:outline-none focus:border-amber-500 text-sm"
+              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
               required
             />
           </div>
 
           <input
             type="text"
-            placeholder="Descrizione ingredienti..."
+            placeholder="Descrizione (opzionale)"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white focus:outline-none focus:border-amber-500 text-sm"
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
           />
 
           <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
@@ -329,7 +312,6 @@ export default function MenuManagement() {
               )}
               
               <div className="flex-1">
-                <label className="block text-xs text-slate-400 mb-1">Immagine Piatto</label>
                 <input
                   type="file"
                   accept="image/*"
@@ -342,73 +324,76 @@ export default function MenuManagement() {
             <button
               type="submit"
               disabled={saving}
-              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-6 py-3 rounded transition text-sm whitespace-nowrap self-end"
+              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-6 py-3 rounded-lg transition text-xs whitespace-nowrap self-end"
             >
               {saving ? 'Salvataggio...' : editingId ? 'Aggiorna Piatto' : 'Aggiungi al Menu'}
             </button>
           </div>
         </form>
 
-        {/* Lista Prodotti */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-          <div className="p-4 border-b border-slate-700 font-semibold flex justify-between items-center">
-            <span>Prodotti in Carta ({products.length})</span>
-          </div>
+        {/* Prodotti Raggruppati sotto le Categorie */}
+        <div className="space-y-6">
+          {categories.map((catName) => {
+            const catProducts = products.filter((p) => (p.category || 'Antipasti') === catName);
+            if (catProducts.length === 0) return null;
 
-          {products.length === 0 ? (
-            <div className="p-6 text-center text-slate-400">Nessun piatto presente nel menu.</div>
-          ) : (
-            <div className="divide-y divide-slate-700">
-              {products.map((item) => (
-                <div key={item.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    {item.image_url ? (
-                      <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded object-cover bg-slate-900" />
-                    ) : (
-                      <div className="w-12 h-12 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-xs text-slate-500">No img</div>
-                    )}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-lg">{item.name}</h3>
-                        <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-amber-400">{item.category}</span>
-                      </div>
-                      <p className="text-sm text-slate-400">{item.description}</p>
-                      <span className="text-amber-500 font-bold mt-1 inline-block">
-                        € {Number(item.price).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-                    <button
-                      onClick={() => toggleAvailability(item.id, item.is_available ?? true)}
-                      className={`px-3 py-1.5 rounded text-xs font-bold border transition ${
-                        (item.is_available ?? true)
-                          ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30'
-                          : 'bg-rose-600/20 text-rose-400 border-rose-500/30'
-                      }`}
-                    >
-                      {(item.is_available ?? true) ? 'Visibile Utente' : 'Nascosto'}
-                    </button>
-
-                    <button
-                      onClick={() => handleEditClick(item)}
-                      className="px-3 py-1.5 rounded text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white"
-                    >
-                      Modifica
-                    </button>
-
-                    <button
-                      onClick={() => handleDeleteProduct(item.id)}
-                      className="px-3 py-1.5 rounded text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20"
-                    >
-                      Elimina
-                    </button>
-                  </div>
+            return (
+              <div key={catName} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden space-y-1">
+                <div className="p-4 bg-slate-800/80 border-b border-slate-700 font-bold text-amber-400 text-sm uppercase tracking-wider flex justify-between">
+                  <span>{catName}</span>
+                  <span className="text-xs text-slate-400">({catProducts.length} piatti)</span>
                 </div>
-              ))}
-            </div>
-          )}
+
+                <div className="divide-y divide-slate-700/60">
+                  {catProducts.map((item) => (
+                    <div key={item.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        {item.image_url ? (
+                          <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded object-cover bg-slate-900" />
+                        ) : (
+                          <div className="w-12 h-12 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-xs text-slate-500">No img</div>
+                        )}
+                        <div>
+                          <h3 className="font-semibold text-base">{item.name}</h3>
+                          <p className="text-xs text-slate-400">{item.description}</p>
+                          <span className="text-amber-500 font-bold text-xs mt-0.5 inline-block">
+                            € {Number(item.price).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                        <button
+                          onClick={() => toggleAvailability(item.id, item.is_available ?? true)}
+                          className={`px-3 py-1.5 rounded text-xs font-bold border transition ${
+                            (item.is_available ?? true)
+                              ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30'
+                              : 'bg-rose-600/20 text-rose-400 border-rose-500/30'
+                          }`}
+                        >
+                          {(item.is_available ?? true) ? 'Visibile' : 'Nascosto'}
+                        </button>
+
+                        <button
+                          onClick={() => handleEditClick(item)}
+                          className="px-3 py-1.5 rounded text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white"
+                        >
+                          Modifica
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteProduct(item.id)}
+                          className="px-3 py-1.5 rounded text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20"
+                        >
+                          Elimina
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
       </div>
