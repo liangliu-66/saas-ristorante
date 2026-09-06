@@ -17,7 +17,7 @@ function PublicPageContent() {
     initialAction === 'reserve' ? 'reserve' : 'order'
   );
 
-  // Stato Carrello & Form
+  // Stato Carrello & Form Ordine
   const [cart, setCart] = useState<Record<string, { product: any; quantity: number; note: string }>>({});
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -25,7 +25,8 @@ function PublicPageContent() {
   const [pickupTime, setPickupTime] = useState('19:30');
   const [generalNotes, setGeneralNotes] = useState('');
 
-  // Stato Prenotazione
+  // Stato Prenotazione Tavolo (Telefono o Email flessibili)
+  const [resEmail, setResEmail] = useState('');
   const [resDate, setResDate] = useState(new Date().toISOString().split('T')[0]);
   const [resTime, setResTime] = useState('20:00');
   const [resGuests, setResGuests] = useState(2);
@@ -161,6 +162,10 @@ function PublicPageContent() {
 
   const handleSendReservation = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!customerPhone && !resEmail) {
+      alert('Inserisci almeno un recapito tra numero di telefono ed email!');
+      return;
+    }
     setIsSubmitting(true);
 
     const rwgToken = searchParams.get('rwg_token');
@@ -168,7 +173,8 @@ function PublicPageContent() {
     const { error } = await supabase.from('reservations').insert({
       restaurant_id: restaurant?.id,
       customer_name: customerName,
-      customer_phone: customerPhone,
+      customer_phone: customerPhone || null,
+      customer_email: resEmail || null,
       party_size: resGuests,
       reservation_date: resDate,
       reservation_time: resTime,
@@ -382,14 +388,24 @@ function PublicPageContent() {
               className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
               required
             />
-            <input
-              type="tel"
-              placeholder="Numero di telefono *"
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
-              required
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                type="tel"
+                placeholder="Numero di telefono"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+              />
+              <input
+                type="email"
+                placeholder="Indirizzo Email"
+                value={resEmail}
+                onChange={(e) => setResEmail(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400 italic">Inserisci almeno un recapito tra Telefono ed Email.</p>
+
             <div className="grid grid-cols-3 gap-2">
               <input
                 type="date"
