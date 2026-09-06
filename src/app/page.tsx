@@ -26,7 +26,6 @@ function MainRestaurantContent() {
   const searchParams = useSearchParams();
   const rwgToken = searchParams?.get('rwg_token');
 
-  // Data di oggi in formato YYYY-MM-DD per il campo date
   const todayDate = new Date().toISOString().split('T')[0];
 
   const [restaurant, setRestaurant] = useState<any>(null);
@@ -43,6 +42,7 @@ function MainRestaurantContent() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
+  const [orderDate, setOrderDate] = useState(todayDate);
   const [pickupTime, setPickupTime] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
   const [sendingOrder, setSendingOrder] = useState(false);
@@ -52,7 +52,7 @@ function MainRestaurantContent() {
   const [resName, setResName] = useState('');
   const [resPhone, setResPhone] = useState('');
   const [resEmail, setResEmail] = useState('');
-  const [resDate, setResDate] = useState(todayDate); // Data di default: oggi
+  const [resDate, setResDate] = useState(todayDate);
   const [resTime, setResTime] = useState('');
   const [resGuests, setResGuests] = useState('2');
   const [resNotes, setResNotes] = useState('');
@@ -142,25 +142,49 @@ function MainRestaurantContent() {
   const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
+  // Filtra gli orari trascorsi se la data selezionata è oggi
+  const filterAvailableSlots = (slots: string[], selectedDate: string) => {
+    if (selectedDate !== todayDate) return slots;
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    return slots.filter((slot) => {
+      const [h, m] = slot.split(':').map(Number);
+      const slotMinutes = h * 60 + m;
+      return slotMinutes > currentMinutes;
+    });
+  };
+
+  const availableOrderSlots = filterAvailableSlots(restaurant?.order_time_slots || [], orderDate);
+  const availableResSlots = filterAvailableSlots(restaurant?.reservation_time_slots || [], resDate);
+
+  // Invio Ordine (Comanda salvata separatamente)
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName || !customerPhone || cart.length === 0) return;
     setSendingOrder(true);
 
-    const itemsSummary = cart
-      .map((c) => `${c.quantity}x ${c.name}${c.itemNote ? ` (Modifiche: ${c.itemNote})` : ''}`)
-      .join(', ');
+    const formattedItems = cart.map((c) => ({
+      name: c.name,
+      quantity: c.quantity,
+      price: c.price,
+      itemNote: c.itemNote || '',
+    }));
+
+    const numGuests = totalItems || 1;
 
     const { error } = await supabase.from('reservations').insert([
       {
         restaurant_id: restaurant.id,
         customer_name: customerName,
         customer_phone: customerPhone,
-        reservation_date: new Date().toISOString().split('T')[0],
+        reservation_date: orderDate || todayDate,
         reservation_time: pickupTime,
-        notes: `[ORDINE ${orderType.toUpperCase()} - ORARIO: ${pickupTime}] ${generalNotes ? `Note: ${generalNotes} | ` : ''}Prodotti: ${itemsSummary}`,
+        notes: `[ORDINE ${orderType.toUpperCase()}] ${generalNotes.trim()}`,
+        items: formattedItems,
         status: 'pending',
-        guests: totalItems,
+        guests: numGuests,
+        party_size: numGuests,
       },
     ]);
 
@@ -179,14 +203,14 @@ function MainRestaurantContent() {
 
   const handleSendReservation = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validazione: Almeno uno tra Telefono o Email deve essere inserito
     if (!resPhone.trim() && !resEmail.trim()) {
       setResContactError(true);
       return;
     }
     setResContactError(false);
     setSendingRes(true);
+
+    const numGuests = parseInt(resGuests) || 2;
 
     const { error } = await supabase.from('reservations').insert([
       {
@@ -196,8 +220,9 @@ function MainRestaurantContent() {
         customer_email: resEmail.trim() || null,
         reservation_date: resDate || todayDate,
         reservation_time: resTime,
-        guests: parseInt(resGuests) || 2,
-        notes: `[PRENOTAZIONE TAVOLO] ${resNotes} (GoogleRef: ${rwgToken || 'Direct'})`,
+        guests: numGuests,
+        party_size: numGuests,
+        notes: `[PRENOTAZIONE TAVOLO] ${resNotes.trim()} (GoogleRef: ${rwgToken || 'Direct'})`,
         status: 'pending',
       },
     ]);
@@ -216,12 +241,8 @@ function MainRestaurantContent() {
 
   if (loading) return <div className="min-h-screen bg-slate-900 text-white p-6 flex items-center justify-center">Caricamento...</div>;
 
-  const orderTimeSlots: string[] = restaurant?.order_time_slots || [];
-  const reservationTimeSlots: string[] = restaurant?.reservation_time_slots || [];
-
   return (
     <div className="min-h-screen bg-slate-900 text-white pb-28">
-      {/* Header Ristorante */}
       <header className="bg-slate-800 border-b border-slate-700 p-6 text-center space-y-3">
         <h1 className="text-3xl font-black text-amber-500">{restaurant.name}</h1>
         {restaurant.description && <p className="text-slate-300 text-sm max-w-md mx-auto">{restaurant.description}</p>}
@@ -325,6 +346,7 @@ function MainRestaurantContent() {
                     <label className="block text-xs text-slate-400 mb-1">Data</label>
                     <input
                       type="date"
+                      min={todayDate}
                       value={resDate}
                       onChange={(e) => setResDate(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
@@ -340,10 +362,10 @@ function MainRestaurantContent() {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
                       required
                     >
-                      {reservationTimeSlots.length === 0 ? (
-                        <option value="">Nessun orario disponibile</option>
+                      {availableResSlots.length === 0 ? (
+                        <option value="">Nessun orario rimasto</option>
                       ) : (
-                        reservationTimeSlots.map((slot: string) => (
+                        availableResSlots.map((slot: string) => (
                           <option key={slot} value={slot}>{slot}</option>
                         ))
                       )}
@@ -402,7 +424,6 @@ function MainRestaurantContent() {
                     />
                   </div>
 
-                  {/* Avviso Validazione Contatti */}
                   {resContactError && (
                     <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-2.5 rounded-lg text-xs font-semibold text-center">
                       Inserire almeno uno dei due contatti (Telefono o Email) per proseguire.
@@ -497,43 +518,61 @@ function MainRestaurantContent() {
                   ))}
                 </div>
 
+                {/* Selettore Ritiro / Consegna */}
                 <div className="grid grid-cols-2 gap-2 pt-2">
-                  {restaurant.allow_takeaway && (
-                    <button
-                      type="button"
-                      onClick={() => setOrderType('takeaway')}
-                      className={`p-2 rounded-lg text-xs font-bold border ${orderType === 'takeaway' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700'}`}
-                    >
-                      Asporto
-                    </button>
-                  )}
-                  {restaurant.allow_delivery && (
-                    <button
-                      type="button"
-                      onClick={() => setOrderType('delivery')}
-                      className={`p-2 rounded-lg text-xs font-bold border ${orderType === 'delivery' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700'}`}
-                    >
-                      Consegna (€{Number(restaurant.delivery_fee || 0).toFixed(2)})
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setOrderType('takeaway')}
+                    className={`p-2.5 rounded-lg text-xs font-bold border transition ${orderType === 'takeaway' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700'}`}
+                  >
+                    🥡 Ritiro
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!restaurant?.allow_delivery}
+                    onClick={() => restaurant?.allow_delivery && setOrderType('delivery')}
+                    className={`p-2.5 rounded-lg text-xs font-bold border transition ${
+                      restaurant?.allow_delivery 
+                        ? (orderType === 'delivery' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700')
+                        : 'bg-slate-900/50 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+                    }`}
+                  >
+                    🛵 Consegna {restaurant?.allow_delivery ? `(€${Number(restaurant?.delivery_fee || 0).toFixed(2)})` : '(Non disp.)'}
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Orario Desiderato Ordine</label>
-                  <select
-                    value={pickupTime}
-                    onChange={(e) => setPickupTime(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
-                    required
-                  >
-                    {orderTimeSlots.length === 0 ? (
-                      <option value="">Nessun orario disponibile</option>
-                    ) : (
-                      orderTimeSlots.map((slot: string) => (
-                        <option key={slot} value={slot}>{slot}</option>
-                      ))
-                    )}
-                  </select>
+                {/* Selezione Data e Orario Ritiro/Consegna */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Data</label>
+                    <input
+                      type="date"
+                      min={todayDate}
+                      value={orderDate}
+                      onChange={(e) => setOrderDate(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Orario Desiderato</label>
+                    <select
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                      required
+                    >
+                      {availableOrderSlots.length === 0 ? (
+                        <option value="">Nessun orario rimasto</option>
+                      ) : (
+                        availableOrderSlots.map((slot: string) => (
+                          <option key={slot} value={slot}>{slot}</option>
+                        ))
+                      )}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="space-y-3">

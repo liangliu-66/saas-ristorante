@@ -11,6 +11,7 @@ interface OrderItem {
   customer_phone: string;
   customer_email?: string;
   notes: string;
+  items?: Array<{ name: string; quantity: number; price: number; itemNote?: string }>;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   guests: number;
   party_size?: number;
@@ -27,7 +28,6 @@ export default function LiveDashboardPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
   const [newOrderAlert, setNewOrderAlert] = useState(false);
 
-  // Stato per la compressione/espansione dei dettagli (Note e Contatti)
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
 
   const router = useRouter();
@@ -129,8 +129,8 @@ export default function LiveDashboardPage() {
 
   if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento ordini live...</div>;
 
-  const foodOrders = orders.filter((o) => o.notes?.includes('[ORDINE'));
-  const tableReservations = orders.filter((o) => !o.notes?.includes('[ORDINE'));
+  const foodOrders = orders.filter((o) => o.notes?.includes('[ORDINE') || (o.items && o.items.length > 0));
+  const tableReservations = orders.filter((o) => !o.notes?.includes('[ORDINE') && (!o.items || o.items.length === 0));
   const rawList = activeTab === 'orders' ? foodOrders : tableReservations;
 
   const filteredList = rawList.filter((item) => {
@@ -153,7 +153,12 @@ export default function LiveDashboardPage() {
   });
 
   const cleanNotes = (notes: string) => {
-    return notes.replace(/\[PRENOTAZIONE TAVOLO\]\s*/g, '').replace(/\(GoogleRef:[^)]*\)/g, '').trim();
+    return notes
+      .replace(/\[PRENOTAZIONE TAVOLO\]\s*/g, '')
+      .replace(/\[ORDINE TAKEAWAY\]\s*/g, '')
+      .replace(/\[ORDINE DELIVERY\]\s*/g, '')
+      .replace(/\(GoogleRef:[^)]*\)/g, '')
+      .trim();
   };
 
   const renderCard = (item: OrderItem) => {
@@ -163,7 +168,7 @@ export default function LiveDashboardPage() {
 
     return (
       <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3 shadow-sm">
-        {/* riga 1: Nome, Persone, Orario, Stato */}
+        {/* riga 1: Nome, Persone/Articoli, Orario, Stato */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <h3 className="font-extrabold text-base text-white">{item.customer_name}</h3>
@@ -190,19 +195,35 @@ export default function LiveDashboardPage() {
           </div>
         </div>
 
-        {/* Dettagli Espandibili (Contatti & Note) */}
+        {/* Visualizzazione Comanda Piatti (se è un ordine) */}
+        {activeTab === 'orders' && item.items && item.items.length > 0 && (
+          <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 space-y-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-amber-500 font-extrabold block">Comanda Ordine:</span>
+            <div className="divide-y divide-slate-800">
+              {item.items.map((it, idx) => (
+                <div key={idx} className="py-1 text-xs flex justify-between items-start">
+                  <div>
+                    <span className="font-bold text-white">{it.quantity}x {it.name}</span>
+                    {it.itemNote && <span className="text-amber-400 text-[11px] block">↳ Modifiche: {it.itemNote}</span>}
+                  </div>
+                  <span className="text-slate-400 font-mono">€{(it.price * it.quantity).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Dettagli Espandibili (Contatti & Note Generali Cliente) */}
         {isExpanded && (
           <div className="space-y-2 pt-2 border-t border-slate-700/60 transition-all">
-            {/* Recapiti */}
             <div className="text-xs text-amber-400 font-semibold flex flex-wrap items-center gap-4">
               <span>📞 {item.customer_phone || 'Nessun telefono'}</span>
               {item.customer_email && <span>✉️ {item.customer_email}</span>}
             </div>
 
-            {/* Note */}
             {notesContent && (
               <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 text-xs text-slate-300">
-                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note:</span>
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note Cliente:</span>
                 <p className="whitespace-pre-line leading-snug">{notesContent}</p>
               </div>
             )}
@@ -211,7 +232,6 @@ export default function LiveDashboardPage() {
 
         {/* riga Azioni: Modifica Stato + Tasto ALTRO */}
         <div className="flex items-center justify-between pt-1 border-t border-slate-700/40">
-          {/* Selettore Modifica Stato */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 font-medium">Stato:</span>
             <select
@@ -228,7 +248,6 @@ export default function LiveDashboardPage() {
             </select>
           </div>
 
-          {/* Tasto ALTRO per Espandere / Comprimere Note e Contatti */}
           <button
             onClick={() => toggleExpand(item.id)}
             className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 py-1 rounded-lg transition-colors flex items-center gap-1"
@@ -288,7 +307,7 @@ export default function LiveDashboardPage() {
               activeTab === 'orders' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
-            <span>🛍️ Ordini Asporto & Delivery</span>
+            <span>🛍️ Ordini Ritiro & Delivery</span>
             <span className="bg-slate-800 px-2 py-0.5 rounded-full text-[10px]">{foodOrders.length}</span>
           </button>
         </div>
