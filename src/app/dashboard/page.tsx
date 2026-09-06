@@ -442,15 +442,15 @@ export default function LiveDashboardPage() {
           </div>
         )}
 
-        {/* Header Gestore */}
+        {/* Header Gestore con Tasto Promozioni in Evidenza */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-4 sm:p-5 rounded-xl border border-slate-700 gap-3">
           <div>
             <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Pannello Live</span>
             <h1 className="text-xl font-black">{restaurant?.name}</h1>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {/* Tasti Attivazione e Test Audio */}
+          <div className="flex flex-wrap items-center gap-2 text-xs w-full sm:w-auto">
+            {/* Tasto Attivazione Audio */}
             <button
               onClick={enableAudio}
               className={`px-3 py-2 rounded-lg font-bold border transition ${
@@ -467,12 +467,18 @@ export default function LiveDashboardPage() {
               Test Audio
             </button>
 
+            {/* NUOVO TASTO PROMOZIONI */}
+            <Link 
+              href="/dashboard/promotions" 
+              className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold px-3 py-2 rounded-lg transition-colors flex items-center gap-1"
+            >
+              Promozioni
+            </Link>
+
             <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-2 rounded-lg transition-colors">
               Menu
             </Link>
-            <Link href="/dashboard/promotions" className="bg-slate-700 hover:bg-slate-600 text-amber-400 font-bold px-3 py-2 rounded-lg border border-amber-500/20 transition-colors">
-              Promozioni
-            </Link>
+            
             <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-3 py-2 rounded-lg transition-colors">
               Impostazioni
             </Link>
