@@ -18,6 +18,8 @@ interface Product {
 export default function MenuManagement() {
   const [restaurant, setRestaurant] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [newCatInput, setNewCatInput] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Form stato
@@ -55,6 +57,11 @@ export default function MenuManagement() {
     }
 
     setRestaurant(restData);
+    const catList = restData.custom_categories || ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
+    setCategories(catList);
+    if (!catList.includes(category) && catList.length > 0) {
+      setCategory(catList[0]);
+    }
 
     const { data: prodData } = await supabase
       .from('products')
@@ -75,9 +82,48 @@ export default function MenuManagement() {
     setName('');
     setDescription('');
     setPrice('');
-    setCategory('Antipasti');
+    setCategory(categories[0] || 'Antipasti');
     setImageFile(null);
     setImagePreview(null);
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCatInput.trim() || !restaurant) return;
+    const catName = newCatInput.trim();
+    if (categories.includes(catName)) return;
+
+    const updatedCategories = [...categories, catName];
+    const { error } = await supabase
+      .from('restaurants')
+      .update({ custom_categories: updatedCategories })
+      .eq('id', restaurant.id);
+
+    if (!error) {
+      setCategories(updatedCategories);
+      setCategory(catName);
+      setNewCatInput('');
+    } else {
+      alert(`Errore aggiunta categoria: ${error.message}`);
+    }
+  };
+
+  const handleDeleteCategory = async (catToDelete: string) => {
+    if (!confirm(`Vuoi davvero eliminare la categoria "${catToDelete}"?`)) return;
+
+    const updatedCategories = categories.filter((c) => c !== catToDelete);
+    const { error } = await supabase
+      .from('restaurants')
+      .update({ custom_categories: updatedCategories })
+      .eq('id', restaurant.id);
+
+    if (!error) {
+      setCategories(updatedCategories);
+      if (category === catToDelete && updatedCategories.length > 0) {
+        setCategory(updatedCategories[0]);
+      }
+    } else {
+      alert(`Errore eliminazione categoria: ${error.message}`);
+    }
   };
 
   const handleEditClick = (p: Product) => {
@@ -85,7 +131,7 @@ export default function MenuManagement() {
     setName(p.name);
     setDescription(p.description || '');
     setPrice(p.price.toString());
-    setCategory(p.category || 'Antipasti');
+    setCategory(p.category || categories[0] || 'Antipasti');
     setImagePreview(p.image_url);
     setImageFile(null);
   };
@@ -187,6 +233,41 @@ export default function MenuManagement() {
           </Link>
         </div>
 
+        {/* Gestione Categorie */}
+        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+          <h2 className="text-sm font-bold text-amber-500">Gestione Categorie Menu</h2>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Nome nuova categoria..."
+              value={newCatInput}
+              onChange={(e) => setNewCatInput(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded p-2.5 text-xs text-white flex-1 focus:outline-none focus:border-amber-500"
+            />
+            <button
+              onClick={handleAddCategory}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded transition"
+            >
+              + Aggiungi Categoria
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {categories.map((cat) => (
+              <div key={cat} className="flex items-center gap-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs">
+                <span>{cat}</span>
+                <button
+                  onClick={() => handleDeleteCategory(cat)}
+                  className="text-rose-400 hover:text-rose-300 font-bold ml-1"
+                  title="Elimina categoria"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Form Gestione Piatto con Anteprima Immagine */}
         <form onSubmit={handleSaveProduct} className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
           <div className="flex justify-between items-center">
@@ -215,12 +296,9 @@ export default function MenuManagement() {
               onChange={(e) => setCategory(e.target.value)}
               className="bg-slate-900 border border-slate-700 rounded p-3 text-white focus:outline-none focus:border-amber-500 text-sm"
             >
-              <option value="Antipasti">Antipasti</option>
-              <option value="Primi">Primi</option>
-              <option value="Secondi">Secondi</option>
-              <option value="Pizza">Pizza</option>
-              <option value="Dolci">Dolci</option>
-              <option value="Bevande">Bevande</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
 
             <input
@@ -282,7 +360,7 @@ export default function MenuManagement() {
           ) : (
             <div className="divide-y divide-slate-700">
               {products.map((item) => (
-                <div key={item.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-slate-750">
+                <div key={item.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                     {item.image_url ? (
                       <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded object-cover bg-slate-900" />

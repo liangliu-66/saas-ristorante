@@ -43,10 +43,7 @@ function PublicPageContent() {
 
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Stato ricevuta con salvataggio persistente in localStorage
   const [submittedReceipt, setSubmittedReceipt] = useState<any>(null);
-
   const [currentSlide, setCurrentSlide] = useState(0);
 
   const supabase = createBrowserClient(
@@ -55,12 +52,6 @@ function PublicPageContent() {
   );
 
   useEffect(() => {
-    // Recupera eventuale ricevuta salvata in precedenza nel browser
-    const savedReceipt = localStorage.getItem('nom_last_receipt');
-    if (savedReceipt) {
-      try { setSubmittedReceipt(JSON.parse(savedReceipt)); } catch (e) { /* ignora */ }
-    }
-
     let isMounted = true;
 
     const loadData = async () => {
@@ -96,11 +87,11 @@ function PublicPageContent() {
         }
 
         if (discRes.status === 'fulfilled' && discRes.value.data) {
-          const sortedRules = discRes.value.data.sort((a: any, b: any) => Number(b.min_amount) - Number(a.min_amount));
+          const sortedRules = discRes.value.data.sort((a: any, b: any) => Number(b.min_amount) - Number(b.min_amount));
           setDiscountRules(sortedRules);
         }
       } catch (err) {
-        console.error('Errore durante il caricamento dati:', err);
+        console.error('Errore caricamento:', err);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -157,7 +148,6 @@ function PublicPageContent() {
     });
   };
 
-  // Funzione di validazione telefono (almeno 8 cifre valide)
   const isValidPhone = (phone: string) => {
     const cleanPhone = phone.replace(/[\s\-\(\)\+]/g, '');
     return /^\d{8,15}$/.test(cleanPhone);
@@ -167,10 +157,7 @@ function PublicPageContent() {
     e.preventDefault();
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
 
-    if (!isValidPhone(customerPhone)) {
-      alert("Inserisci un numero di telefono valido (almeno 8 cifre)!");
-      return;
-    }
+    if (!isValidPhone(customerPhone)) return;
 
     setIsSubmitting(true);
 
@@ -178,9 +165,7 @@ function PublicPageContent() {
       name: c.product.name,
       quantity: c.quantity,
       price: c.product.price,
-      // Inseriamo la nota formattata per renderla visibile nella comanda gestore
-      itemNote: c.note ? `Nota piatto: ${c.note}` : undefined,
-      note: c.note
+      itemNote: c.note ? `Nota: ${c.note}` : undefined,
     }));
 
     const fullPickupTime = `${orderDate} ${pickupTime}`;
@@ -202,7 +187,7 @@ function PublicPageContent() {
 
     setIsSubmitting(false);
     if (!error) {
-      const receiptData = {
+      setSubmittedReceipt({
         type: 'order',
         customerName,
         customerPhone,
@@ -210,11 +195,8 @@ function PublicPageContent() {
         pickupTime: fullPickupTime,
         items: formattedItems,
         notes: orderNotesPayload,
-        total: finalTotal,
-        discountPercent
-      };
-      setSubmittedReceipt(receiptData);
-      localStorage.setItem('nom_last_receipt', JSON.stringify(receiptData));
+        total: finalTotal
+      });
       setCart({});
       setGeneralNotes('');
     } else {
@@ -225,14 +207,11 @@ function PublicPageContent() {
   const handleSendReservation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerPhone && !resEmail) {
-      alert('Inserisci almeno un recapito tra numero di telefono ed email!');
+      alert('Inserisci almeno un recapito tra telefono ed email!');
       return;
     }
 
-    if (customerPhone && !isValidPhone(customerPhone)) {
-      alert("Inserisci un numero di telefono valido (almeno 8 cifre)!");
-      return;
-    }
+    if (customerPhone && !isValidPhone(customerPhone)) return;
 
     setIsSubmitting(true);
 
@@ -253,7 +232,7 @@ function PublicPageContent() {
 
     setIsSubmitting(false);
     if (!error) {
-      const receiptData = {
+      setSubmittedReceipt({
         type: 'reservation',
         customerName,
         customerPhone,
@@ -262,9 +241,7 @@ function PublicPageContent() {
         time: resTime,
         guests: resGuests,
         notes: resNotes
-      };
-      setSubmittedReceipt(receiptData);
-      localStorage.setItem('nom_last_receipt', JSON.stringify(receiptData));
+      });
     } else {
       alert(`Errore invio prenotazione: ${error.message}`);
     }
@@ -286,9 +263,7 @@ function PublicPageContent() {
         slots.push(timeVal);
       }
     }
-    if (slots.length === 0) {
-      slots.push("23:30");
-    }
+    if (slots.length === 0) slots.push("23:30");
     return slots;
   };
 
@@ -324,17 +299,6 @@ function PublicPageContent() {
                 <p className="text-xs text-slate-300">{promotions[currentSlide].description}</p>
               )}
             </div>
-            {promotions.length > 1 && (
-              <div className="flex justify-center gap-1.5 mt-3">
-                {promotions.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentSlide(idx)}
-                    className={`h-1.5 rounded-full transition-all ${idx === currentSlide ? 'w-5 bg-amber-500' : 'w-1.5 bg-slate-700'}`}
-                  />
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -359,33 +323,30 @@ function PublicPageContent() {
           <div className="bg-slate-800 border border-amber-500/40 p-6 rounded-xl space-y-4 text-xs">
             <div className="text-center space-y-1 border-b border-slate-700 pb-4">
               <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
-                Richiesta Inviata con Successo
+                Inviato Correttamente
               </span>
               <h2 className="text-base font-bold text-white pt-1">
-                {submittedReceipt.type === 'order' ? 'Riepilogo Ordine' : 'Riepilogo Prenotazione Tavolo'}
+                {submittedReceipt.type === 'order' ? 'Riepilogo Ordine' : 'Riepilogo Prenotazione'}
               </h2>
-              <p className="text-slate-400">Il ristorante ha ricevuto la tua richiesta e la elaborerà a breve.</p>
             </div>
 
             {submittedReceipt.type === 'order' ? (
               <div className="space-y-3 font-mono">
                 <div className="flex justify-between text-slate-300">
                   <span>Cliente:</span>
-                  <span className="font-bold text-white">{submittedReceipt.customerName} ({submittedReceipt.customerPhone})</span>
+                  <span className="font-bold text-white">{submittedReceipt.customerName}</span>
                 </div>
                 <div className="flex justify-between text-slate-300">
                   <span>Modalità:</span>
                   <span className="font-bold text-amber-400">{submittedReceipt.orderType}</span>
                 </div>
                 <div className="flex justify-between text-slate-300">
-                  <span>Orario Previsto:</span>
+                  <span>Orario:</span>
                   <span className="font-bold text-white">{submittedReceipt.pickupTime}</span>
                 </div>
-
                 <div className="border-t border-slate-700 pt-2 space-y-1">
-                  <span className="text-[10px] text-slate-400 uppercase tracking-wide block font-sans font-bold">Piatti Ordinati:</span>
                   {submittedReceipt.items.map((it: any, idx: number) => (
-                    <div key={idx} className="flex justify-between text-slate-300 py-1 border-b border-slate-700/40">
+                    <div key={idx} className="flex justify-between text-slate-300 py-1">
                       <div>
                         <span>{it.quantity}x {it.name}</span>
                         {it.itemNote && <span className="block text-[10px] text-amber-300">{it.itemNote}</span>}
@@ -394,18 +355,20 @@ function PublicPageContent() {
                     </div>
                   ))}
                 </div>
-
-                {submittedReceipt.notes && (
-                  <div className="text-slate-300 pt-1 font-sans">
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wide block font-bold">Note Ordine:</span>
-                    <p className="text-xs bg-slate-900 p-2 rounded border border-slate-700 mt-1">{submittedReceipt.notes}</p>
-                  </div>
-                )}
-
                 <div className="flex justify-between text-amber-400 font-bold text-sm pt-2 border-t border-slate-700 font-sans">
-                  <span>Totale Corrisposto:</span>
+                  <span>Totale:</span>
                   <span>€{submittedReceipt.total.toFixed(2)}</span>
                 </div>
+
+                {/* Pulsante invio WhatsApp */}
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(`*Nuovo Ordine*\nNome: ${submittedReceipt.customerName}\nTipo: ${submittedReceipt.orderType}\nOrario: ${submittedReceipt.pickupTime}\nTotale: €${submittedReceipt.total.toFixed(2)}`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg font-sans uppercase tracking-wider mt-4"
+                >
+                  Invia Conferma via WhatsApp 📱
+                </a>
               </div>
             ) : (
               <div className="space-y-3 font-mono">
@@ -414,34 +377,31 @@ function PublicPageContent() {
                   <span className="font-bold text-white">{submittedReceipt.customerName}</span>
                 </div>
                 <div className="flex justify-between text-slate-300">
-                  <span>Contatti:</span>
-                  <span className="font-bold text-white">{submittedReceipt.customerPhone || submittedReceipt.customerEmail}</span>
-                </div>
-                <div className="flex justify-between text-slate-300">
-                  <span>Data e Ora:</span>
+                  <span>Data/Ora:</span>
                   <span className="font-bold text-amber-400">{submittedReceipt.date} alle {submittedReceipt.time}</span>
                 </div>
                 <div className="flex justify-between text-slate-300">
                   <span>Coperti:</span>
                   <span className="font-bold text-white">{submittedReceipt.guests} persone</span>
                 </div>
-                {submittedReceipt.notes && (
-                  <div className="text-slate-300 pt-1 font-sans">
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wide block font-bold">Note Tavolo:</span>
-                    <p className="text-xs bg-slate-900 p-2 rounded border border-slate-700 mt-1">{submittedReceipt.notes}</p>
-                  </div>
-                )}
+
+                {/* Pulsante invio WhatsApp Prenotazione */}
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(`*Nuova Prenotazione Tavolo*\nNome: ${submittedReceipt.customerName}\nData: ${submittedReceipt.date} ore ${submittedReceipt.time}\nCoperti: ${submittedReceipt.guests}`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg font-sans uppercase tracking-wider mt-4"
+                >
+                  Invia Prenotazione via WhatsApp 📱
+                </a>
               </div>
             )}
 
             <button
-              onClick={() => {
-                setSubmittedReceipt(null);
-                localStorage.removeItem('nom_last_receipt');
-              }}
+              onClick={() => setSubmittedReceipt(null)}
               className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 rounded-lg transition-colors font-sans uppercase tracking-wider"
             >
-              Fai un nuovo ordine / prenotazione
+              Nuovo Ordine / Prenotazione
             </button>
           </div>
         ) : activeTab === 'order' ? (
@@ -454,12 +414,8 @@ function PublicPageContent() {
                 onChange={(e) => setOrderType(e.target.value as any)}
                 className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-semibold focus:outline-none focus:border-amber-500"
               >
-                <option value="takeaway" disabled={!allowTakeaway}>
-                  Ritiro d'asporto {!allowTakeaway ? '(Non disponibile)' : ''}
-                </option>
-                <option value="delivery" disabled={!allowDelivery}>
-                  Consegna a domicilio {!allowDelivery ? '(Non disponibile)' : ''}
-                </option>
+                <option value="takeaway" disabled={!allowTakeaway}>Ritiro d'asporto</option>
+                <option value="delivery" disabled={!allowDelivery}>Consegna a domicilio</option>
               </select>
             </div>
 
@@ -503,7 +459,7 @@ function PublicPageContent() {
 
             {Object.keys(cart).length > 0 && (
               <form onSubmit={handleSendOrder} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
-                <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine ({orderType === 'takeaway' ? 'Ritiro' : 'Consegna'})</h3>
+                <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine</h3>
                 <div className="space-y-2 divide-y divide-slate-700/50">
                   {Object.values(cart).map(({ product, quantity, note }) => (
                     <div key={product.id} className="pt-2 space-y-2 text-xs">
@@ -515,17 +471,14 @@ function PublicPageContent() {
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            title="Aggiungi nota al piatto"
                             onClick={() => setEditingNoteId(editingNoteId === product.id ? null : product.id)}
-                            className={`p-1.5 rounded-lg border transition ${note ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-slate-700 text-slate-300 border-slate-600 hover:text-white'}`}
+                            className={`p-1.5 rounded-lg border transition ${note ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-slate-700 text-slate-300 border-slate-600'}`}
                           >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
+                            📝
                           </button>
-                          <button type="button" onClick={() => updateQuantity(product.id, -1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">-</button>
+                          <button type="button" onClick={() => updateQuantity(product.id, -1)} className="bg-slate-700 text-white w-6 h-6 rounded font-bold">-</button>
                           <span className="font-bold text-xs">{quantity}</span>
-                          <button type="button" onClick={() => updateQuantity(product.id, 1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">+</button>
+                          <button type="button" onClick={() => updateQuantity(product.id, 1)} className="bg-slate-700 text-white w-6 h-6 rounded font-bold">+</button>
                         </div>
                       </div>
 
@@ -533,10 +486,10 @@ function PublicPageContent() {
                         <div className="pt-1">
                           <input
                             type="text"
-                            placeholder="Es. Senza cipolla, ben cotto..."
+                            placeholder="Nota piatto (es. senza cipolla)"
                             value={note}
                             onChange={(e) => updateItemNote(product.id, e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-[11px] text-amber-300 focus:outline-none focus:border-amber-500"
+                            className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-[11px] text-amber-300"
                           />
                         </div>
                       )}
@@ -546,17 +499,7 @@ function PublicPageContent() {
 
                 <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-xs space-y-1 font-mono">
                   <div className="flex justify-between text-slate-400">
-                    <span>Subtotale:</span>
-                    <span>€{rawTotal.toFixed(2)}</span>
-                  </div>
-                  {discountPercent > 0 && (
-                    <div className="flex justify-between text-emerald-400 font-bold">
-                      <span>Sconto Applicato ({discountPercent}%):</span>
-                      <span>-€{discountAmount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-amber-400 font-bold text-sm pt-1 border-t border-slate-800">
-                    <span>Totale Finale:</span>
+                    <span>Totale:</span>
                     <span>€{finalTotal.toFixed(2)}</span>
                   </div>
                 </div>
@@ -567,15 +510,18 @@ function PublicPageContent() {
                     placeholder="Il tuo nome *"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
                     required
                   />
+                  {/* Input telefono con bordo rosso automatico se non valido */}
                   <input
                     type="tel"
                     placeholder="Numero di telefono *"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    className={`w-full bg-slate-900 border rounded-lg p-2.5 text-xs text-white transition ${
+                      customerPhone && !isValidPhone(customerPhone) ? 'border-rose-500' : 'border-slate-700 focus:border-amber-500'
+                    }`}
                     required
                   />
 
@@ -585,14 +531,13 @@ function PublicPageContent() {
                       min={todayStr}
                       value={orderDate}
                       onChange={(e) => setOrderDate(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white"
                       required
                     />
-
                     <select
                       value={pickupTime}
                       onChange={(e) => setPickupTime(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white"
                       required
                     >
                       {timeSlots.map((slot) => (
@@ -602,19 +547,19 @@ function PublicPageContent() {
                   </div>
 
                   <textarea
-                    placeholder="Note generali o allergie (opzionale)"
+                    placeholder="Note generali (opzionale)"
                     value={generalNotes}
                     onChange={(e) => setGeneralNotes(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
                     rows={2}
                   />
 
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg transition-colors text-xs uppercase tracking-wider"
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg text-xs uppercase"
                   >
-                    {isSubmitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
+                    Conferma ed Invia Ordine
                   </button>
                 </div>
               </form>
@@ -628,26 +573,27 @@ function PublicPageContent() {
               placeholder="Il tuo nome *"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white"
               required
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 type="tel"
-                placeholder="Numero di telefono"
+                placeholder="Telefono"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+                className={`w-full bg-slate-900 border rounded-lg p-2.5 text-white ${
+                  customerPhone && !isValidPhone(customerPhone) ? 'border-rose-500' : 'border-slate-700'
+                }`}
               />
               <input
                 type="email"
-                placeholder="Indirizzo Email"
+                placeholder="Email"
                 value={resEmail}
                 onChange={(e) => setResEmail(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white"
               />
             </div>
-            <p className="text-[10px] text-slate-400 italic">Inserisci almeno un recapito tra Telefono ed Email.</p>
 
             <div className="grid grid-cols-3 gap-2">
               <input
@@ -655,13 +601,13 @@ function PublicPageContent() {
                 min={todayStr}
                 value={resDate}
                 onChange={(e) => setResDate(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+                className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white"
                 required
               />
               <select
                 value={resTime}
                 onChange={(e) => setResTime(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+                className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white"
                 required
               >
                 {timeSlots.map((slot) => (
@@ -674,23 +620,16 @@ function PublicPageContent() {
                 max="20"
                 value={resGuests}
                 onChange={(e) => setResGuests(parseInt(e.target.value, 10))}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
+                className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white"
                 required
               />
             </div>
-            <textarea
-              placeholder="Note o richieste particolari (opzionale)"
-              value={resNotes}
-              onChange={(e) => setResNotes(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              rows={2}
-            />
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg transition-colors uppercase tracking-wider"
+              className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg uppercase"
             >
-              {isSubmitting ? 'Invio in corso...' : 'Invia Prenotazione'}
+              Invia Prenotazione
             </button>
           </form>
         )}
