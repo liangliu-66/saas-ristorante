@@ -178,23 +178,26 @@ export default function DashboardPage() {
         
         {/* Header */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-6 rounded-xl border border-slate-700 gap-4">
-          <div>
-            <span className="text-xs text-amber-500 font-semibold uppercase tracking-wider">Locale Attivo</span>
-            <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
-            <p className="text-slate-400 text-xs mt-1">
-              URL Menu: <a href={`/menu/${restaurant?.slug}`} target="_blank" className="text-amber-500 hover:underline">/menu/{restaurant?.slug}</a>
-            </p>
-          </div>
+  <div>
+    <span className="text-xs text-amber-500 font-semibold uppercase tracking-wider">Locale Attivo</span>
+    <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
+    <p className="text-slate-400 text-xs mt-1">
+      URL Menu: <a href={`/menu/${restaurant?.slug}`} target="_blank" className="text-amber-500 hover:underline">/menu/{restaurant?.slug}</a>
+    </p>
+  </div>
 
-          <div className="flex gap-3">
-            <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
-              Bacheca & Orari
-            </Link>
-            <button onClick={handleLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-lg border border-red-500/20 transition-colors">
-              Esci
-            </button>
-          </div>
-        </header>
+  <div className="flex flex-wrap gap-3">
+    <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 text-sm font-bold px-4 py-2 rounded-lg transition-colors">
+      🔔 Ordini Live
+    </Link>
+    <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+      Bacheca & Orari
+    </Link>
+    <button onClick={handleLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-lg border border-red-500/20 transition-colors">
+      Esci
+    </button>
+  </div>
+</header>
 
         {/* Form Gestore con Anteprima Immagine */}
         <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">

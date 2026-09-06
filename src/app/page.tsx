@@ -1,161 +1,504 @@
 'use client';
 
-import Link from 'next/link';
+export const dynamic = 'force-dynamic';
 
-export default function LandingPage() {
+import { useEffect, useState, Suspense } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
+import { useSearchParams } from 'next/navigation';
+
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  image_url: string | null;
+  is_available: boolean;
+}
+
+interface CartItem extends Product {
+  quantity: number;
+}
+
+function MainRestaurantContent() {
+  const searchParams = useSearchParams();
+  const rwgToken = searchParams?.get('rwg_token'); // Token di tracciamento ufficiali di Google
+
+  const [restaurant, setRestaurant] = useState<any>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'menu' | 'reservation'>('menu');
+
+  // Stato Carrello per Ordini
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+
+  // Form Ordine
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
+  const [notes, setNotes] = useState('');
+  const [sendingOrder, setSendingOrder] = useState(false);
+  const [orderSuccess, setOrderSuccess] = useState(false);
+
+  // Form Prenotazione Tavolo (Compatibile con Google Reserve)
+  const [resName, setResName] = useState('');
+  const [resPhone, setResPhone] = useState('');
+  const [resEmail, setResEmail] = useState('');
+  const [resDate, setResDate] = useState('');
+  const [resTime, setResTime] = useState('20:00');
+  const [resGuests, setResGuests] = useState('2');
+  const [resNotes, setResNotes] = useState('');
+  const [sendingRes, setSendingRes] = useState(false);
+  const [resSuccess, setResSuccess] = useState(false);
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  useEffect(() => {
+    // Se l'URL da Google contiene action=reserve apre subito la tab prenotazione
+    if (searchParams?.get('action') === 'reserve') {
+      setActiveTab('reservation');
+    }
+
+    const fetchFirstRestaurant = async () => {
+      setLoading(true);
+      // Prende il ristorante attivo nel sistema
+      const { data: restData } = await supabase
+        .from('restaurants')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (restData) {
+        setRestaurant(restData);
+        if (restData.allow_delivery) setOrderType('delivery');
+
+        // Carica i piatti visibili
+        const { data: prodData } = await supabase
+          .from('products')
+          .select('*')
+          .eq('restaurant_id', restData.id)
+          .eq('is_available', true);
+
+        if (prodData) setProducts(prodData);
+      }
+      setLoading(false);
+    };
+
+    fetchFirstRestaurant();
+  }, [searchParams]);
+
+  // Carrello
+  const addToCart = (product: Product) => {
+    setCart((prev) => {
+      const existing = prev.find((item) => item.id === product.id);
+      if (existing) {
+        return prev.map((item) =>
+          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      }
+      return [...prev, { ...product, quantity: 1 }];
+    });
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart((prev) =>
+      prev
+        .map((item) => (item.id === productId ? { ...item, quantity: item.quantity - 1 } : item))
+        .filter((item) => item.quantity > 0)
+    );
+  };
+
+  const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Invio Ordine Asporto / Delivery
+  const handleSendOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customerName || !customerPhone || cart.length === 0) return;
+    setSendingOrder(true);
+
+    const { error } = await supabase.from('reservations').insert([
+      {
+        restaurant_id: restaurant.id,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        notes: `[ORDINE ${orderType.toUpperCase()}] ${notes} (GoogleRef: ${rwgToken || 'Direct'}) - Prodotti: ${cart.map((c) => `${c.quantity}x ${c.name}`).join(', ')}`,
+        status: 'pending',
+        guests: totalItems,
+        reservation_date: new Date().toISOString().split('T')[0],
+        reservation_time: new Date().toTimeString().split(' ')[0],
+      },
+    ]);
+
+    if (!error) {
+      setOrderSuccess(true);
+      setCart([]);
+      setTimeout(() => {
+        setIsCheckoutOpen(false);
+        setOrderSuccess(false);
+      }, 3000);
+    } else {
+      alert(`Errore invio ordine: ${error.message}`);
+    }
+    setSendingOrder(false);
+  };
+
+  // Invio Prenotazione Tavolo (per Google Reserve)
+  const handleSendReservation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resName || !resPhone || !resDate) return;
+    setSendingRes(true);
+
+    const { error } = await supabase.from('reservations').insert([
+      {
+        restaurant_id: restaurant.id,
+        customer_name: resName,
+        customer_phone: resPhone,
+        customer_email: resEmail,
+        reservation_date: resDate,
+        reservation_time: resTime,
+        guests: parseInt(resGuests) || 2,
+        notes: `[PRENOTAZIONE TAVOLO] ${resNotes} (GoogleRef: ${rwgToken || 'Direct'})`,
+        status: 'pending',
+      },
+    ]);
+
+    if (!error) {
+      setResSuccess(true);
+      setResName('');
+      setResPhone('');
+      setResEmail('');
+      setResNotes('');
+    } else {
+      alert(`Errore prenotazione: ${error.message}`);
+    }
+    setSendingRes(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white p-6 flex items-center justify-center">
+        Caricamento locale...
+      </div>
+    );
+  }
+
+  if (!restaurant) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white p-6 flex flex-col items-center justify-center text-center">
+        <h1 className="text-2xl font-bold text-red-400">Ristorante Non Configurato</h1>
+        <p className="text-slate-400 text-sm mt-2">Configura un locale dalla tua dashboard.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex flex-col font-sans selection:bg-amber-500 selection:text-slate-900">
-      {/* Header / Navbar */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 font-black text-xl tracking-tight">
-            <span className="bg-amber-500 text-slate-900 px-2 py-0.5 rounded-lg text-sm font-extrabold">SaaS</span>
-            <span>Menuvibes</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link 
-              href="/login" 
-              className="text-sm font-medium text-slate-300 hover:text-white transition-colors"
+    <div className="min-h-screen bg-slate-900 text-white pb-28">
+      {/* Intestazione Locale */}
+      <header className="bg-slate-800 border-b border-slate-700 p-6 text-center space-y-3">
+        <h1 className="text-3xl font-black text-amber-500">{restaurant.name}</h1>
+        {restaurant.description && <p className="text-slate-300 text-sm max-w-md mx-auto">{restaurant.description}</p>}
+
+        <div className="text-xs text-slate-400 pt-1 flex justify-center items-center gap-4">
+          {restaurant.opening_hours?.text && <span>🕒 {restaurant.opening_hours.text}</span>}
+        </div>
+
+        {/* Pulsanti Switch Mode: Ordina / Prenota Tavolo */}
+        <div className="flex justify-center gap-2 pt-2 max-w-xs mx-auto">
+          <button
+            onClick={() => setActiveTab('menu')}
+            className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold transition-colors ${
+              activeTab === 'menu' ? 'bg-amber-500 text-slate-900' : 'bg-slate-900 text-slate-400 border border-slate-700'
+            }`}
+          >
+            🛍️ Ordina Online
+          </button>
+          {restaurant.allow_reservations && (
+            <button
+              onClick={() => setActiveTab('reservation')}
+              className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold transition-colors ${
+                activeTab === 'reservation' ? 'bg-amber-500 text-slate-900' : 'bg-slate-900 text-slate-400 border border-slate-700'
+              }`}
             >
-              Accedi
-            </Link>
-            <Link 
-              href="/onboarding" 
-              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm transition-colors"
-            >
-              Crea Locale
-            </Link>
-          </div>
+              📅 Prenota Tavolo
+            </button>
+          )}
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="py-20 px-6 max-w-5xl mx-auto text-center space-y-6">
-        <div className="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full text-amber-400 text-xs font-semibold">
-          ✨ La piattaforma digitale per la ristorazione moderna
-        </div>
-        <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-tight">
-          Il Menu Digitale che <br className="hidden sm:inline" />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-600">
-            Aumenta gli Ordini
-          </span> d'Asporto e Delivery.
-        </h1>
-        <p className="text-slate-400 text-base sm:text-lg max-w-2xl mx-auto leading-relaxed">
-          Offri ai tuoi clienti un’esperienza simile alle grandi piattaforme di delivery. Menu QR Code, gestione asporto, consegne e prenotazione tavoli senza commissioni per ordine.
-        </p>
+      {/* Sezione Menu Ordini */}
+      {activeTab === 'menu' && (
+        <main className="max-w-md mx-auto p-4 space-y-4">
+          {products.length === 0 ? (
+            <p className="text-slate-400 text-center py-8">Nessun piatto disponibile in questo momento.</p>
+          ) : (
+            products.map((item) => {
+              const inCart = cart.find((c) => c.id === item.id);
+              return (
+                <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center gap-4">
+                  {item.image_url ? (
+                    <img src={item.image_url} alt={item.name} className="w-16 h-16 rounded-lg object-cover bg-slate-900 border border-slate-700" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500">No Img</div>
+                  )}
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-          <Link
-            href="/onboarding"
-            className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-8 py-4 rounded-xl text-base transition-colors shadow-lg shadow-amber-500/10"
-          >
-            Inizia Ora Gratis
-          </Link>
-          <a
-            href="/menu/nomsushivibes"
-            target="_blank"
-            className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold px-8 py-4 rounded-xl text-base transition-colors flex items-center justify-center gap-2"
-          >
-            <span>📱 Vedi Demo Live</span>
-            <span className="text-xs text-amber-500">(/menu/nomsushivibes)</span>
-          </a>
-        </div>
-      </section>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-sm">{item.name}</h3>
+                    <p className="text-xs text-slate-400">{item.description}</p>
+                    <span className="font-bold text-amber-500 text-sm mt-1 block">€{Number(item.price).toFixed(2)}</span>
+                  </div>
 
-      {/* Funzionalità */}
-      <section className="py-16 bg-slate-800/50 border-y border-slate-800 px-6">
-        <div className="max-w-6xl mx-auto space-y-12">
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-bold">Tutto ciò di cui ha bisogno il tuo Locale</h2>
-            <p className="text-slate-400 text-sm">Un'unica suite per gestire la sala, l'asporto e la consegna a domicilio.</p>
-          </div>
+                  <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-700">
+                    {inCart ? (
+                      <>
+                        <button onClick={() => removeFromCart(item.id)} className="w-7 h-7 bg-slate-700 rounded text-amber-500 font-bold">-</button>
+                        <span className="text-xs font-bold w-4 text-center">{inCart.quantity}</span>
+                        <button onClick={() => addToCart(item)} className="w-7 h-7 bg-amber-500 text-slate-900 rounded font-bold">+</button>
+                      </>
+                    ) : (
+                      <button onClick={() => addToCart(item)} className="bg-amber-500 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-md">
+                        Aggiungi
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </main>
+      )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-3">
-              <div className="w-10 h-10 bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center font-bold text-lg">🥡</div>
-              <h3 className="font-bold text-lg">Asporto & Delivery</h3>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                I clienti scelgono i piatti, impostano l'orario di ritiro o la consegna e ti inviano l'ordine in batch direttamente.
-              </p>
-            </div>
+      {/* Sezione Prenotazione Tavoli (Integrazione Google) */}
+      {activeTab === 'reservation' && (
+        <main className="max-w-md mx-auto p-4 space-y-4">
+          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4">
+            <h2 className="text-lg font-bold text-amber-500 flex items-center gap-2">
+              <span>📅</span> Prenota un Tavolo
+            </h2>
 
-            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-3">
-              <div className="w-10 h-10 bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center font-bold text-lg">📅</div>
-              <h3 className="font-bold text-lg">Prenotazione Tavoli</h3>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                Gestisci le richieste di prenotazione sala con indicazione di orario, numero commensali e note per richieste speciali.
-              </p>
-            </div>
-
-            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-3">
-              <div className="w-10 h-10 bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center font-bold text-lg">🕒</div>
-              <h3 className="font-bold text-lg">Orari Differenziati</h3>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                Imposta orari indipendenti per la sala, per il ritiro d'asporto e per le consegne a domicilio secondo le tue esigenze.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Piani & Prezzi */}
-      <section className="py-20 px-6 max-w-5xl mx-auto space-y-12">
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl sm:text-3xl font-bold">Piani Trasparenti, Zero Commissioni</h2>
-          <p className="text-slate-400 text-sm">Nessuna percentuale sugli ordini. Mantieni il 100% dei tuoi incassi.</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
-          {/* Piano Base */}
-          <div className="bg-slate-800/60 p-8 rounded-2xl border border-slate-700 space-y-6 flex flex-col justify-between">
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-bold text-xl">Menu Digitale</h3>
-                <p className="text-slate-400 text-xs">Ideale per la consultazione al tavolo</p>
+            {resSuccess ? (
+              <div className="text-center py-6 space-y-2">
+                <span className="text-3xl">🎉</span>
+                <h3 className="text-lg font-bold text-emerald-400">Richiesta Inviata!</h3>
+                <p className="text-slate-400 text-xs">Il ristorante ti invierà la conferma via SMS/Telefono.</p>
+                <button
+                  onClick={() => setResSuccess(false)}
+                  className="mt-4 bg-slate-700 text-xs text-white px-4 py-2 rounded-lg"
+                >
+                  Fai un'altra prenotazione
+                </button>
               </div>
-              <div className="text-3xl font-black">€19 <span className="text-xs text-slate-400 font-normal">/ mese</span></div>
-              <ul className="space-y-2 text-sm text-slate-300">
-                <li className="flex items-center gap-2">✓ Menu QR Code illimitato</li>
-                <li className="flex items-center gap-2">✓ Caricamento immagini piatti</li>
-                <li className="flex items-center gap-2">✓ Categorie e allergeni</li>
-                <li className="flex items-center gap-2">✓ Slug personalizzato e stabile</li>
-              </ul>
-            </div>
-            <Link href="/onboarding" className="block text-center bg-slate-700 hover:bg-slate-600 font-bold p-3 rounded-xl transition-colors text-sm">
-              Attiva Piano Base
-            </Link>
-          </div>
+            ) : (
+              <form onSubmit={handleSendReservation} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Data</label>
+                    <input
+                      type="date"
+                      value={resDate}
+                      onChange={(e) => setResDate(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                      required
+                    />
+                  </div>
 
-          {/* Piano Pro */}
-          <div className="bg-slate-800 p-8 rounded-2xl border-2 border-amber-500 space-y-6 flex flex-col justify-between relative shadow-xl shadow-amber-500/5">
-            <div className="absolute -top-3 right-6 bg-amber-500 text-slate-900 text-[10px] font-black uppercase px-3 py-1 rounded-full">
-              Consigliato
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Orario</label>
+                    <select
+                      value={resTime}
+                      onChange={(e) => setResTime(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                    >
+                      <option value="12:30">12:30</option>
+                      <option value="13:00">13:00</option>
+                      <option value="13:30">13:30</option>
+                      <option value="19:30">19:30</option>
+                      <option value="20:00">20:00</option>
+                      <option value="20:30">20:30</option>
+                      <option value="21:00">21:00</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Numero Persone</label>
+                  <select
+                    value={resGuests}
+                    onChange={(e) => setResGuests(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                      <option key={n} value={n}>{n} {n === 1 ? 'Persona' : 'Persone'}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <input
+                    type="text"
+                    placeholder="Nome e Cognome"
+                    value={resName}
+                    onChange={(e) => setResName(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
+                    required
+                  />
+
+                  <input
+                    type="tel"
+                    placeholder="Telefono (es. 3391234567)"
+                    value={resPhone}
+                    onChange={(e) => setResPhone(e.target.value.replace(/[^0-9+]/g, ''))}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
+                    required
+                  />
+
+                  <input
+                    type="email"
+                    placeholder="Email (opzionale per conferma)"
+                    value={resEmail}
+                    onChange={(e) => setResEmail(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
+                  />
+
+                  <textarea
+                    rows={2}
+                    placeholder="Richieste particolari (es. seggiolone, allergie...)"
+                    value={resNotes}
+                    onChange={(e) => setResNotes(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={sendingRes}
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold p-3 rounded-lg transition-colors text-xs"
+                >
+                  {sendingRes ? 'Invio in corso...' : 'Conferma Prenotazione Tavolo'}
+                </button>
+              </form>
+            )}
+          </div>
+        </main>
+      )}
+
+      {/* Floating Bar Carrello */}
+      {totalItems > 0 && activeTab === 'menu' && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-900/95 border-t border-slate-800 backdrop-blur-md">
+          <div className="max-w-md mx-auto flex items-center justify-between bg-amber-500 p-3 rounded-xl text-slate-900">
+            <div>
+              <span className="text-xs font-bold block">{totalItems} articoli selezionati</span>
+              <span className="text-lg font-black">Totale: €{totalAmount.toFixed(2)}</span>
             </div>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-bold text-xl">Full Takeaway & Delivery</h3>
-                <p className="text-slate-400 text-xs">La soluzione completa per vendere online</p>
-              </div>
-              <div className="text-3xl font-black text-amber-500">€39 <span className="text-xs text-slate-400 font-normal">/ mese</span></div>
-              <ul className="space-y-2 text-sm text-slate-300">
-                <li className="flex items-center gap-2">✓ Tutto il piano Menu Digitale</li>
-                <li className="flex items-center gap-2">✓ Carrello e ordini in batch</li>
-                <li className="flex items-center gap-2">✓ Gestione Asporto e Delivery</li>
-                <li className="flex items-center gap-2">✓ Gestione Prenotazione Tavoli</li>
-                <li className="flex items-center gap-2">✓ Orari differenziati gestibili</li>
-              </ul>
-            </div>
-            <Link href="/onboarding" className="block text-center bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold p-3 rounded-xl transition-colors text-sm">
-              Inizia la Prova Gratuita
-            </Link>
+            <button
+              onClick={() => setIsCheckoutOpen(true)}
+              className="bg-slate-900 text-amber-500 font-bold px-4 py-2 rounded-lg text-sm"
+            >
+              Vedi Ordine →
+            </button>
           </div>
         </div>
-      </section>
+      )}
 
-      {/* Footer */}
-      <footer className="mt-auto border-t border-slate-800 py-8 px-6 text-center text-xs text-slate-500">
-        <p>© 2026 Menuvibes SaaS. Tutti i diritti riservati.</p>
-      </footer>
+      {/* Modale Checkout */}
+      {isCheckoutOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+              <h2 className="text-lg font-bold">Riepilogo Ordine</h2>
+              <button onClick={() => setIsCheckoutOpen(false)} className="text-slate-400 text-sm">Chiudi ✕</button>
+            </div>
+
+            {orderSuccess ? (
+              <div className="text-center py-8 space-y-2">
+                <span className="text-4xl">🎉</span>
+                <h3 className="text-xl font-bold text-emerald-400">Ordine Inviato!</h3>
+                <p className="text-slate-400 text-xs">Il ristorante ha ricevuto la tua richiesta.</p>
+              </div>
+            ) : (
+              <form onSubmit={handleSendOrder} className="space-y-4">
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                  {cart.map((c) => (
+                    <div key={c.id} className="flex justify-between text-sm py-1 border-b border-slate-700/50">
+                      <span>{c.quantity}x {c.name}</span>
+                      <span className="font-semibold">€{(c.price * c.quantity).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2">
+                  {restaurant.allow_takeaway && (
+                    <button
+                      type="button"
+                      onClick={() => setOrderType('takeaway')}
+                      className={`p-2 rounded-lg text-xs font-bold border ${orderType === 'takeaway' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700'}`}
+                    >
+                      🥡 Asporto
+                    </button>
+                  )}
+                  {restaurant.allow_delivery && (
+                    <button
+                      type="button"
+                      onClick={() => setOrderType('delivery')}
+                      className={`p-2 rounded-lg text-xs font-bold border ${orderType === 'delivery' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700'}`}
+                    >
+                      🛵 Consegna (€{Number(restaurant.delivery_fee || 0).toFixed(2)})
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    placeholder="Nome e Cognome"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
+                    required
+                  />
+
+                  <input
+                    type="tel"
+                    placeholder="Telefono (es. 3391234567)"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9+]/g, ''))}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
+                    required
+                  />
+
+                  <textarea
+                    rows={2}
+                    placeholder="Note per il ristorante..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={sendingOrder}
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold p-3 rounded-lg transition-colors text-xs"
+                >
+                  {sendingOrder ? 'Invio in corso...' : `Invia Ordine (€${(totalAmount + (orderType === 'delivery' ? (restaurant.delivery_fee || 0) : 0)).toFixed(2)})`}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-900 text-white p-6 flex items-center justify-center">Caricamento...</div>}>
+      <MainRestaurantContent />
+    </Suspense>
   );
 }
