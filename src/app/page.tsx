@@ -255,26 +255,31 @@ function PublicPageContent() {
         ) : activeTab === 'order' ? (
           /* TAB MENU & CARRELLO */
           <div className="space-y-6">
-            {categories.length === 0 || items.every((i) => !i.category_id) ? (
-              /* Fallback: Mostra direttamente la lista dei piatti se manca l'associazione categorie */
+            {/* Se non ci sono categorie O se nessun piatto ha una category_id valida */}
+            {categories.length === 0 || !items.some((item) => categories.some((c) => c.id === item.category_id)) ? (
               <div className="space-y-2">
-                {items.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
-                    <div className="space-y-0.5">
-                      <h3 className="font-bold text-xs text-white">{item.name}</h3>
-                      {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
-                      <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
+                {items.length === 0 ? (
+                  <p className="text-center text-xs text-slate-500 py-4">Nessun piatto trovato nel menu.</p>
+                ) : (
+                  items.map((item) => (
+                    <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
+                      <div className="space-y-0.5">
+                        <h3 className="font-bold text-xs text-white">{item.name}</h3>
+                        {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
+                        <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
+                      </div>
+                      <button
+                        onClick={() => addToCart(item)}
+                        className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        Aggiungi
+                      </button>
                     </div>
-                    <button
-                      onClick={() => addToCart(item)}
-                      className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      Aggiungi
-                    </button>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             ) : (
+              /* Rendering normale diviso per Categorie */
               categories.map((cat) => {
                 const catItems = items.filter((i) => i.category_id === cat.id);
                 if (catItems.length === 0) return null;
