@@ -24,14 +24,15 @@ interface OrderItem {
 }
 
 export default function LiveDashboardPage() {
+  const todayDate = new Date().toISOString().split('T')[0];
+
   const [restaurant, setRestaurant] = useState<any>(null);
   const [ordersList, setOrdersList] = useState<OrderItem[]>([]);
   const [reservationsList, setReservationsList] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'orders' | 'reservations'>('orders');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
-  const [newOrderAlert, setNewOrderAlert] = useState(false);
-
+  const [selectedDate, setSelectedDate] = useState<string>(todayDate);
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
 
   const router = useRouter();
@@ -41,14 +42,14 @@ export default function LiveDashboardPage() {
   );
 
   const fetchAllData = async (restaurantId: string) => {
-    // 1. Fetch Ordini Ritiro / Consegna
+    // Ordini
     const { data: ordData } = await supabase
       .from('orders')
       .select('*')
       .eq('restaurant_id', restaurantId)
       .order('pickup_time', { ascending: true });
 
-    // 2. Fetch Prenotazioni Tavolo
+    // Prenotazioni
     const { data: resData } = await supabase
       .from('reservations')
       .select('*')
@@ -60,7 +61,7 @@ export default function LiveDashboardPage() {
         ordData.map((o) => ({
           ...o,
           date: o.pickup_date,
-          time: o.pickup_time,
+          time: o.pickup_time || '12:00',
           type: 'order',
         }))
       );
@@ -71,7 +72,7 @@ export default function LiveDashboardPage() {
         resData.map((r) => ({
           ...r,
           date: r.reservation_date,
-          time: r.reservation_time,
+          time: r.reservation_time || '12:00',
           type: 'reservation',
         }))
       );
@@ -103,12 +104,17 @@ export default function LiveDashboardPage() {
           { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restData.id}` },
           (payload) => {
             if (payload.eventType === 'INSERT') {
-              const newOrd: OrderItem = { ...payload.new as any, date: payload.new.pickup_date, time: payload.new.pickup_time, type: 'order' };
+              const newOrd: OrderItem = { 
+                ...payload.new as any, 
+                date: payload.new.pickup_date, 
+                time: payload.new.pickup_time || '12:00', 
+                type: 'order' 
+              };
               setOrdersList((prev) => [...prev, newOrd].sort((a, b) => (a.time > b.time ? 1 : -1)));
-              setNewOrderAlert(true);
-              setTimeout(() => setNewOrderAlert(false), 5000);
             } else if (payload.eventType === 'UPDATE') {
-              setOrdersList((prev) => prev.map((o) => (o.id === payload.new.id ? { ...payload.new as any, date: payload.new.pickup_date, time: payload.new.pickup_time, type: 'order' } : o)));
+              setOrdersList((prev) => 
+                prev.map((o) => (o.id === payload.new.id ? { ...payload.new as any, date: payload.new.pickup_date, time: payload.new.pickup_time || '12:00', type: 'order' } : o))
+              );
             }
           }
         )
@@ -122,12 +128,17 @@ export default function LiveDashboardPage() {
           { event: '*', schema: 'public', table: 'reservations', filter: `restaurant_id=eq.${restData.id}` },
           (payload) => {
             if (payload.eventType === 'INSERT') {
-              const newRes: OrderItem = { ...payload.new as any, date: payload.new.reservation_date, time: payload.new.reservation_time, type: 'reservation' };
+              const newRes: OrderItem = { 
+                ...payload.new as any, 
+                date: payload.new.reservation_date, 
+                time: payload.new.reservation_time || '12:00', 
+                type: 'reservation' 
+              };
               setReservationsList((prev) => [...prev, newRes].sort((a, b) => (a.time > b.time ? 1 : -1)));
-              setNewOrderAlert(true);
-              setTimeout(() => setNewOrderAlert(false), 5000);
             } else if (payload.eventType === 'UPDATE') {
-              setReservationsList((prev) => prev.map((r) => (r.id === payload.new.id ? { ...payload.new as any, date: payload.new.reservation_date, time: payload.new.reservation_time, type: 'reservation' } : r)));
+              setReservationsList((prev) => 
+                prev.map((r) => (r.id === payload.new.id ? { ...r, ...payload.new as any, date: payload.new.reservation_date, time: payload.new.reservation_time || '12:00', type: 'reservation' } : r))
+              );
             }
           }
         )
@@ -166,11 +177,15 @@ export default function LiveDashboardPage() {
     router.push('/login');
   };
 
-  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento dashboard live...</div>;
+  if (loading) return <div className="p-8 text-slate-400 bg-slate-900 min-h-screen text-xs">Caricamento in corso...</div>;
 
   const currentRawList = activeTab === 'orders' ? ordersList : reservationsList;
 
-  const filteredList = currentRawList.filter((item) => {
+  // Filtra prima per la DATA selezionata nel calendario
+  const dateFilteredList = currentRawList.filter((item) => item.date === selectedDate);
+
+  // Poi applica il filtro di STATO
+  const finalFilteredList = dateFilteredList.filter((item) => {
     if (statusFilter === 'all') return true;
     if (statusFilter === 'pending') return item.status === 'pending';
     if (statusFilter === 'confirmed') return item.status === 'confirmed' || item.status === 'preparing' || item.status === 'ready';
@@ -179,12 +194,12 @@ export default function LiveDashboardPage() {
     return true;
   });
 
-  const lunchList = filteredList.filter((i) => {
+  const lunchList = finalFilteredList.filter((i) => {
     const hour = parseInt((i.time || '12:00').split(':')[0], 10);
     return hour < 16;
   });
 
-  const dinnerList = filteredList.filter((i) => {
+  const dinnerList = finalFilteredList.filter((i) => {
     const hour = parseInt((i.time || '12:00').split(':')[0], 10);
     return hour >= 16;
   });
@@ -194,76 +209,76 @@ export default function LiveDashboardPage() {
     const isExpanded = !!expandedCards[item.id];
 
     return (
-      <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3 shadow-sm">
-        {/* Header Scheda */}
+      <div key={item.id} className="bg-slate-800/80 p-4 rounded-xl border border-slate-700/80 space-y-3">
+        {/* Intestazione Scheda Minimal */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
-            <h3 className="font-extrabold text-base text-white">{item.customer_name}</h3>
+            <h3 className="font-bold text-sm text-white">{item.customer_name}</h3>
             
             {item.type === 'reservation' && (
-              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-0.5 rounded-md text-xs font-black">
-                👥 {numPeople} {numPeople === 1 ? 'persona' : 'persone'}
+              <span className="bg-slate-900 text-slate-300 border border-slate-700 px-2.5 py-0.5 rounded-md text-[11px] font-medium">
+                {numPeople} {numPeople === 1 ? 'persona' : 'persone'}
               </span>
             )}
 
             {item.type === 'order' && (
-              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-md text-xs font-bold uppercase">
-                {item.order_type === 'delivery' ? '🛵 Consegna' : '🥡 Ritiro'}
+              <span className="bg-slate-900 text-slate-300 border border-slate-700 px-2 py-0.5 rounded-md text-[11px] font-medium uppercase tracking-wider">
+                {item.order_type === 'delivery' ? 'Consegna' : 'Ritiro'}
               </span>
             )}
 
-            <span className="bg-slate-900 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-md text-xs font-mono font-bold">
-              🕒 {item.time}
+            <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold">
+              {item.time}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400 font-medium">{item.date}</span>
-            {item.status === 'pending' && <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded text-xs font-bold">Da Confermare</span>}
-            {item.status === 'confirmed' && <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded text-xs font-bold">Confermato</span>}
-            {item.status === 'preparing' && <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded text-xs font-bold">In Cucinazione</span>}
-            {item.status === 'ready' && <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded text-xs font-bold">Pronto</span>}
-            {item.status === 'completed' && <span className="bg-slate-700 text-slate-300 border border-slate-600 px-2 py-0.5 rounded text-xs font-bold">Completato</span>}
-            {item.status === 'cancelled' && <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded text-xs font-bold">Annullato</span>}
+            <span className="text-[11px] text-slate-400">{item.date}</span>
+            {item.status === 'pending' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Da Confermare</span>}
+            {item.status === 'confirmed' && <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Confermato</span>}
+            {item.status === 'preparing' && <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">In Cucinazione</span>}
+            {item.status === 'ready' && <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Pronto</span>}
+            {item.status === 'completed' && <span className="bg-slate-700/60 text-slate-300 border border-slate-600 px-2 py-0.5 rounded text-[11px] font-semibold">Completato</span>}
+            {item.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Annullato</span>}
           </div>
         </div>
 
-        {/* Comanda Piatti per gli Ordini */}
+        {/* Comanda Piatti Minimal */}
         {item.type === 'order' && item.items && item.items.length > 0 && (
-          <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/80 space-y-1.5">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-              <span className="text-[10px] uppercase tracking-wider text-amber-500 font-extrabold block">Comanda Ordine:</span>
-              {item.total_amount && <span className="text-xs font-bold text-emerald-400">Totale: €{Number(item.total_amount).toFixed(2)}</span>}
+          <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/60 space-y-1.5">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-1 text-[11px]">
+              <span className="uppercase tracking-wider text-slate-400 font-bold">Comanda:</span>
+              {item.total_amount && <span className="font-mono text-emerald-400 font-bold">Totale: €{Number(item.total_amount).toFixed(2)}</span>}
             </div>
-            <div className="divide-y divide-slate-800">
+            <div className="divide-y divide-slate-800/60">
               {item.items.map((it, idx) => (
                 <div key={idx} className="py-1 text-xs flex justify-between items-start">
                   <div>
-                    <span className="font-bold text-white">{it.quantity}x {it.name}</span>
-                    {it.itemNote && <span className="text-amber-400 text-[11px] block">↳ Modifica: {it.itemNote}</span>}
+                    <span className="font-semibold text-white">{it.quantity}x {it.name}</span>
+                    {it.itemNote && <span className="text-slate-400 text-[11px] block italic">Note: {it.itemNote}</span>}
                   </div>
-                  {it.price && <span className="text-slate-400 font-mono">€{(it.price * it.quantity).toFixed(2)}</span>}
+                  {it.price && <span className="text-slate-400 font-mono text-[11px]">€{(it.price * it.quantity).toFixed(2)}</span>}
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Dettagli Espandibili (Contatti & Note) */}
+        {/* Dettagli Espandibili */}
         {isExpanded && (
           <div className="space-y-2 pt-2 border-t border-slate-700/60 transition-all">
-            <div className="text-xs text-amber-400 font-semibold flex flex-wrap items-center gap-4">
-              <span>📞 {item.customer_phone || 'Nessun telefono'}</span>
-              {item.customer_email && <span>✉️ {item.customer_email}</span>}
+            <div className="text-xs text-slate-300 font-mono flex flex-wrap items-center gap-4">
+              <span>Tel: {item.customer_phone || 'N/D'}</span>
+              {item.customer_email && <span>Email: {item.customer_email}</span>}
             </div>
 
             {item.notes ? (
-              <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 text-xs text-slate-300">
-                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note Cliente:</span>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-700/40 text-xs text-slate-300">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note:</span>
                 <p className="whitespace-pre-line leading-snug">{item.notes}</p>
               </div>
             ) : (
-              <p className="text-[11px] text-slate-500 italic">Nessuna nota aggiuntiva.</p>
+              <p className="text-[11px] text-slate-500 italic">Nessuna nota specificata.</p>
             )}
           </div>
         )}
@@ -275,23 +290,22 @@ export default function LiveDashboardPage() {
             <select
               value={item.status}
               onChange={(e) => handleStatusChange(item.id, item.type, e.target.value as OrderItem['status'])}
-              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-semibold focus:outline-none focus:border-amber-500 cursor-pointer"
+              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-medium focus:outline-none focus:border-amber-500 cursor-pointer"
             >
-              <option value="pending">⏳ Da Confermare</option>
-              <option value="confirmed">✓ Confermato</option>
-              {item.type === 'order' && <option value="preparing">🍳 In Cucinazione</option>}
-              {item.type === 'order' && <option value="ready">🛵 Pronto</option>}
-              <option value="completed">🎉 Completato</option>
-              <option value="cancelled">✕ Annullato</option>
+              <option value="pending">Da Confermare</option>
+              <option value="confirmed">Confermato</option>
+              {item.type === 'order' && <option value="preparing">In Cucinazione</option>}
+              {item.type === 'order' && <option value="ready">Pronto</option>}
+              <option value="completed">Completato</option>
+              <option value="cancelled">Annullato</option>
             </select>
           </div>
 
           <button
             onClick={() => toggleExpand(item.id)}
-            className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 py-1 rounded-lg transition-colors flex items-center gap-1"
+            className="bg-slate-700/70 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
           >
-            <span>{isExpanded ? 'Nascondi' : 'Altro'}</span>
-            <span className="text-[10px]">{isExpanded ? '▲' : '▼'}</span>
+            {isExpanded ? 'Comprimi' : 'Dettagli'}
           </button>
         </div>
       </div>
@@ -302,25 +316,19 @@ export default function LiveDashboardPage() {
     <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6">
       <div className="max-w-5xl mx-auto space-y-5">
         
-        {newOrderAlert && (
-          <div className="bg-amber-500 text-slate-900 font-extrabold p-3 rounded-xl shadow-lg animate-bounce flex justify-between items-center text-xs">
-            <span>🔔 NUOVA RICHIESTA RICEVUTA IN TEMPO REALE!</span>
-            <button onClick={() => setNewOrderAlert(false)} className="bg-slate-900 text-white px-2 py-1 rounded">Chiudi</button>
-          </div>
-        )}
-
+        {/* Header Gestore */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-4 sm:p-5 rounded-xl border border-slate-700 gap-3">
           <div>
             <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Pannello Live</span>
             <h1 className="text-xl font-black">{restaurant?.name}</h1>
           </div>
 
-          <div className="flex flex-wrap gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
             <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-2 rounded-lg transition-colors">
-              📖 Menu
+              Menu
             </Link>
             <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-3 py-2 rounded-lg transition-colors">
-              ⚙️ Impostazioni
+              Impostazioni
             </Link>
             <button onClick={handleLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold px-3 py-2 rounded-lg border border-red-500/20 transition-colors">
               Esci
@@ -328,74 +336,96 @@ export default function LiveDashboardPage() {
           </div>
         </header>
 
-        {/* Tab Ordini / Prenotazioni */}
-        <div className="flex border-b border-slate-800 gap-4">
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`pb-2.5 text-xs font-extrabold border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'orders' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>🛍️ Ordini Ritiro & Delivery</span>
-            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-[10px]">{ordersList.length}</span>
-          </button>
+        {/* Barra di Selezione Data (Calendario) & Tab Tipo */}
+        <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          
+          {/* Tabs Ordini vs Prenotazioni */}
+          <div className="flex gap-2 text-xs">
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`px-4 py-2 rounded-lg font-bold transition-colors ${
+                activeTab === 'orders' ? 'bg-amber-500 text-slate-900' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-700'
+              }`}
+            >
+              Ordini Ritiro & Delivery ({ordersList.filter(o => o.date === selectedDate).length})
+            </button>
 
-          <button
-            onClick={() => setActiveTab('reservations')}
-            className={`pb-2.5 text-xs font-extrabold border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'reservations' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>📅 Prenotazioni Tavolo</span>
-            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-[10px]">{reservationsList.length}</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('reservations')}
+              className={`px-4 py-2 rounded-lg font-bold transition-colors ${
+                activeTab === 'reservations' ? 'bg-amber-500 text-slate-900' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-700'
+              }`}
+            >
+              Prenotazioni Tavolo ({reservationsList.filter(r => r.date === selectedDate).length})
+            </button>
+          </div>
+
+          {/* Selezione Data / Calendario */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-medium">Data:</span>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-semibold focus:outline-none focus:border-amber-500"
+            />
+            {selectedDate !== todayDate && (
+              <button
+                onClick={() => setSelectedDate(todayDate)}
+                className="bg-slate-700 hover:bg-slate-600 text-xs text-slate-200 px-2.5 py-2 rounded-lg font-medium transition"
+              >
+                Oggi
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filtri per Stato */}
         <div className="flex flex-wrap gap-1.5 bg-slate-800/60 p-2 rounded-xl border border-slate-700/80 text-xs">
           <button
             onClick={() => setStatusFilter('all')}
-            className={`px-3 py-1 rounded-lg font-bold transition-colors ${statusFilter === 'all' ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3 py-1 rounded-lg font-semibold transition-colors ${statusFilter === 'all' ? 'bg-amber-500 text-slate-900 font-bold' : 'text-slate-400 hover:text-white'}`}
           >
-            Tutti ({currentRawList.length})
+            Tutti ({dateFilteredList.length})
           </button>
           <button
             onClick={() => setStatusFilter('pending')}
-            className={`px-3 py-1 rounded-lg font-bold transition-colors ${statusFilter === 'pending' ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3 py-1 rounded-lg font-semibold transition-colors ${statusFilter === 'pending' ? 'bg-amber-500 text-slate-900 font-bold' : 'text-slate-400 hover:text-white'}`}
           >
-            Da Confermare ({currentRawList.filter(i => i.status === 'pending').length})
+            Da Confermare ({dateFilteredList.filter(i => i.status === 'pending').length})
           </button>
           <button
             onClick={() => setStatusFilter('confirmed')}
-            className={`px-3 py-1 rounded-lg font-bold transition-colors ${statusFilter === 'confirmed' ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3 py-1 rounded-lg font-semibold transition-colors ${statusFilter === 'confirmed' ? 'bg-amber-500 text-slate-900 font-bold' : 'text-slate-400 hover:text-white'}`}
           >
-            Confermati ({currentRawList.filter(i => ['confirmed', 'preparing', 'ready'].includes(i.status)).length})
+            Confermati ({dateFilteredList.filter(i => ['confirmed', 'preparing', 'ready'].includes(i.status)).length})
           </button>
           <button
             onClick={() => setStatusFilter('completed')}
-            className={`px-3 py-1 rounded-lg font-bold transition-colors ${statusFilter === 'completed' ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3 py-1 rounded-lg font-semibold transition-colors ${statusFilter === 'completed' ? 'bg-amber-500 text-slate-900 font-bold' : 'text-slate-400 hover:text-white'}`}
           >
-            Completati ({currentRawList.filter(i => i.status === 'completed').length})
+            Completati ({dateFilteredList.filter(i => i.status === 'completed').length})
           </button>
           <button
             onClick={() => setStatusFilter('cancelled')}
-            className={`px-3 py-1 rounded-lg font-bold transition-colors ${statusFilter === 'cancelled' ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3 py-1 rounded-lg font-semibold transition-colors ${statusFilter === 'cancelled' ? 'bg-amber-500 text-slate-900 font-bold' : 'text-slate-400 hover:text-white'}`}
           >
-            Annullati ({currentRawList.filter(i => i.status === 'cancelled').length})
+            Annullati ({dateFilteredList.filter(i => i.status === 'cancelled').length})
           </button>
         </div>
 
-        {filteredList.length === 0 ? (
+        {/* Elenco Sezionato Pranzo / Cena */}
+        {finalFilteredList.length === 0 ? (
           <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 text-center text-slate-400 text-xs">
-            Nessun elemento corrisponde ai filtri selezionati.
+            Nessun elemento registrato per la data del {selectedDate}.
           </div>
         ) : (
           <div className="space-y-6">
             {lunchList.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center gap-2 border-b border-slate-800 pb-1">
-                  <span className="text-amber-500 font-extrabold text-sm uppercase tracking-wider">☀️ PRANZO</span>
-                  <span className="text-xs text-slate-400 font-semibold">({lunchList.length})</span>
+                  <span className="text-amber-500 font-extrabold text-xs uppercase tracking-wider">Pranzo</span>
+                  <span className="text-xs text-slate-400">({lunchList.length})</span>
                 </div>
                 <div className="space-y-3">
                   {lunchList.map(renderCard)}
@@ -406,8 +436,8 @@ export default function LiveDashboardPage() {
             {dinnerList.length > 0 && (
               <section className="space-y-3 pt-2">
                 <div className="flex items-center gap-2 border-b border-slate-800 pb-1">
-                  <span className="text-amber-500 font-extrabold text-sm uppercase tracking-wider">🌙 CENA</span>
-                  <span className="text-xs text-slate-400 font-semibold">({dinnerList.length})</span>
+                  <span className="text-amber-500 font-extrabold text-xs uppercase tracking-wider">Cena</span>
+                  <span className="text-xs text-slate-400">({dinnerList.length})</span>
                 </div>
                 <div className="space-y-3">
                   {dinnerList.map(renderCard)}
