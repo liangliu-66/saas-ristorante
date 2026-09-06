@@ -18,10 +18,12 @@ export default function SettingsPage() {
   const [allowReservations, setAllowReservations] = useState(true);
   const [deliveryFee, setDeliveryFee] = useState('2.50');
 
-  // Configurazione Fasce Orarie Selezionabili dai Clienti
-  const [slotStart, setSlotStart] = useState('12:00');
-  const [slotEnd, setSlotEnd] = useState('22:30');
-  const [slotInterval, setSlotInterval] = useState('15');
+  // Liste orari inseriti uno per uno
+  const [orderSlots, setOrderSlots] = useState<string[]>([]);
+  const [newOrderSlot, setNewOrderSlot] = useState('');
+
+  const [resSlots, setResSlots] = useState<string[]>([]);
+  const [newResSlot, setNewResSlot] = useState('');
 
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -48,15 +50,36 @@ export default function SettingsPage() {
         setAllowDelivery(data.allow_delivery ?? false);
         setAllowReservations(data.allow_reservations ?? true);
         setDeliveryFee((data.delivery_fee ?? 2.50).toString());
-        setSlotStart(data.time_slot_start || '12:00');
-        setSlotEnd(data.time_slot_end || '22:30');
-        setSlotInterval((data.time_slot_interval || 15).toString());
+        setOrderSlots(data.order_time_slots || ['12:00', '12:30', '13:00', '19:30', '20:00', '20:30']);
+        setResSlots(data.reservation_time_slots || ['12:30', '13:00', '13:30', '20:00', '20:30', '21:00']);
       }
       setLoading(false);
     };
 
     fetchRestaurant();
   }, []);
+
+  const addOrderSlot = () => {
+    if (newOrderSlot && !orderSlots.includes(newOrderSlot)) {
+      setOrderSlots([...orderSlots, newOrderSlot].sort());
+      setNewOrderSlot('');
+    }
+  };
+
+  const removeOrderSlot = (slot: string) => {
+    setOrderSlots(orderSlots.filter((s) => s !== slot));
+  };
+
+  const addResSlot = () => {
+    if (newResSlot && !resSlots.includes(newResSlot)) {
+      setResSlots([...resSlots, newResSlot].sort());
+      setNewResSlot('');
+    }
+  };
+
+  const removeResSlot = (slot: string) => {
+    setResSlots(resSlots.filter((s) => s !== slot));
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,14 +95,13 @@ export default function SettingsPage() {
         allow_delivery: allowDelivery,
         allow_reservations: allowReservations,
         delivery_fee: parseFloat(deliveryFee),
-        time_slot_start: slotStart,
-        time_slot_end: slotEnd,
-        time_slot_interval: parseInt(slotInterval) || 15,
+        order_time_slots: orderSlots,
+        reservation_time_slots: resSlots,
       })
       .eq('id', restaurant.id);
 
     if (!error) {
-      setMessage('Impostazioni e fasce orarie salvate!');
+      setMessage('Impostazioni e orari salvati!');
     } else {
       setMessage(`Errore: ${error.message}`);
     }
@@ -91,9 +113,9 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-2xl mx-auto space-y-6">
-        <Link href="/dashboard" className="text-sm text-amber-500 font-bold hover:underline">← Torna agli Ordini Live</Link>
+        <Link href="/dashboard" className="text-sm text-amber-500 font-bold hover:underline">← Torna alla Dashboard Live</Link>
         
-        <h1 className="text-2xl font-bold">Impostazioni Locale & Fasce Orarie</h1>
+        <h1 className="text-2xl font-bold">Impostazioni Locale & Gestione Orari</h1>
 
         {message && (
           <div className="bg-slate-800 border border-amber-500/50 text-amber-400 p-3 rounded-lg text-xs">
@@ -125,52 +147,66 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          {/* Configurazione Fasce Orarie Prenotabili */}
+          {/* Configurazione Orari Ordini (Asporto/Delivery) */}
           <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-            <h2 className="text-base font-bold text-amber-500">Configurazione Fasce Orarie (Ordini & Prenotazioni)</h2>
-            <p className="text-slate-400 text-xs">
-              Definisci gli orari di apertura e gli intervalli per le fasce orarie che appariranno nel menu a tendina per i clienti.
-            </p>
+            <h2 className="text-base font-bold text-amber-500">Orari Disponibili per Ordini (Asporto/Delivery)</h2>
+            <div className="flex gap-2">
+              <input
+                type="time"
+                value={newOrderSlot}
+                onChange={(e) => setNewOrderSlot(e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white"
+              />
+              <button
+                type="button"
+                onClick={addOrderSlot}
+                className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-xs"
+              >
+                + Aggiungi Orario Ordine
+              </button>
+            </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Orario Inizio</label>
-                <input
-                  type="time"
-                  value={slotStart}
-                  onChange={(e) => setSlotStart(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
-                />
-              </div>
+            <div className="flex flex-wrap gap-2 pt-2">
+              {orderSlots.map((slot) => (
+                <span key={slot} className="bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2">
+                  {slot}
+                  <button type="button" onClick={() => removeOrderSlot(slot)} className="text-red-400 font-bold hover:text-red-300">✕</button>
+                </span>
+              ))}
+            </div>
+          </section>
 
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Orario Fine</label>
-                <input
-                  type="time"
-                  value={slotEnd}
-                  onChange={(e) => setSlotEnd(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
-                />
-              </div>
+          {/* Configurazione Orari Prenotazioni Tavoli */}
+          <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+            <h2 className="text-base font-bold text-amber-500">Orari Disponibili per Prenotazione Tavoli</h2>
+            <div className="flex gap-2">
+              <input
+                type="time"
+                value={newResSlot}
+                onChange={(e) => setNewResSlot(e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white"
+              />
+              <button
+                type="button"
+                onClick={addResSlot}
+                className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-xs"
+              >
+                + Aggiungi Orario Prenotazione
+              </button>
+            </div>
 
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Intervallo Minuti</label>
-                <select
-                  value={slotInterval}
-                  onChange={(e) => setSlotInterval(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
-                >
-                  <option value="15">Ogni 15 min</option>
-                  <option value="30">Ogni 30 min</option>
-                  <option value="60">Ogni 60 min</option>
-                </select>
-              </div>
+            <div className="flex flex-wrap gap-2 pt-2">
+              {resSlots.map((slot) => (
+                <span key={slot} className="bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2">
+                  {slot}
+                  <button type="button" onClick={() => removeResSlot(slot)} className="text-red-400 font-bold hover:text-red-300">✕</button>
+                </span>
+              ))}
             </div>
           </section>
 
           <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-            <h2 className="text-base font-bold text-amber-500">Servizi e Spedizioni</h2>
-            
+            <h2 className="text-base font-bold text-amber-500">Servizi</h2>
             <div className="space-y-3">
               <label className="flex items-center gap-3">
                 <input type="checkbox" checked={allowTakeaway} onChange={(e) => setAllowTakeaway(e.target.checked)} className="w-4 h-4 accent-amber-500" />
