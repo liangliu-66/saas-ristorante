@@ -7,7 +7,8 @@ import { useParams, useSearchParams } from 'next/navigation';
 function PublicMenuContent() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const slug = params?.slug as string;
+  const rawSlug = params?.slug;
+  const slug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
   const initialAction = searchParams.get('action');
 
   const [restaurant, setRestaurant] = useState<any>(null);
@@ -48,17 +49,23 @@ function PublicMenuContent() {
 
     const loadData = async () => {
       try {
-        if (!slug) return;
+        let targetRest: any = null;
 
-        // 1. Cerca il ristorante tramite slug o id
-        const { data: restData } = await supabase
-          .from('restaurants')
-          .select('*')
-          .or(`slug.eq.${slug},id.eq.${slug}`)
-          .maybeSingle();
+        // 1. Cerca il ristorante tramite slug o id se presente
+        if (slug) {
+          const { data: restData } = await supabase
+            .from('restaurants')
+            .select('*')
+            .or(`slug.eq.${slug},id.eq.${slug}`)
+            .maybeSingle();
+          targetRest = restData;
+        }
 
-        // Fallback: se non lo trova via slug, prende il primo ristorante
-        const targetRest = restData || (await supabase.from('restaurants').select('*').limit(1).maybeSingle()).data;
+        // Fallback: Se non viene trovato tramite slug, prendiamo il primo ristorante presente
+        if (!targetRest) {
+          const { data: fallbackRest } = await supabase.from('restaurants').select('*').limit(1).maybeSingle();
+          targetRest = fallbackRest;
+        }
 
         if (isMounted && targetRest) {
           setRestaurant(targetRest);
@@ -212,7 +219,7 @@ function PublicMenuContent() {
           {restaurant?.description && <p className="text-xs text-slate-400 max-w-sm mx-auto">{restaurant.description}</p>}
         </header>
 
-        {/* BACHECA SLIDE PROMOZIONI (Dopo la biografia e prima dei pulsanti) */}
+        {/* BACHECA SLIDE PROMOZIONI */}
         {promotions.length > 0 && (
           <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 p-4 rounded-xl shadow-lg transition-all">
             <div className="space-y-1">
