@@ -209,17 +209,32 @@ export default function SettingsPage() {
   <h2 className="text-base font-bold text-amber-500">Servizi</h2>
   <div className="space-y-3">
     <label className="flex items-center gap-3 cursor-pointer">
-      <input type="checkbox" checked={allowTakeaway} onChange={(e) => setAllowTakeaway(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+      <input 
+        type="checkbox" 
+        checked={allowTakeaway} 
+        onChange={(e) => setAllowTakeaway(e.target.checked)} 
+        className="w-4 h-4 accent-amber-500 cursor-pointer" 
+      />
       <span className="text-xs font-semibold">Abilita Ritiro</span>
     </label>
 
     <label className="flex items-center gap-3 cursor-pointer">
-      <input type="checkbox" checked={allowDelivery} onChange={(e) => setAllowDelivery(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+      <input 
+        type="checkbox" 
+        checked={allowDelivery} 
+        onChange={(e) => setAllowDelivery(e.target.checked)} 
+        className="w-4 h-4 accent-amber-500 cursor-pointer" 
+      />
       <span className="text-xs font-semibold">Abilita Consegna</span>
     </label>
 
     <label className="flex items-center gap-3 cursor-pointer">
-      <input type="checkbox" checked={allowReservations} onChange={(e) => setAllowReservations(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+      <input 
+        type="checkbox" 
+        checked={allowReservations} 
+        onChange={(e) => setAllowReservations(e.target.checked)} 
+        className="w-4 h-4 accent-amber-500 cursor-pointer" 
+      />
       <span className="text-xs font-semibold">Abilita Prenotazione Tavoli</span>
     </label>
   </div>

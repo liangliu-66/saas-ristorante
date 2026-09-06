@@ -518,29 +518,34 @@ function MainRestaurantContent() {
                   ))}
                 </div>
 
-                {/* Selettore Ritiro / Consegna */}
-                <div className="grid grid-cols-2 gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setOrderType('takeaway')}
-                    className={`p-2.5 rounded-lg text-xs font-bold border transition ${orderType === 'takeaway' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700'}`}
-                  >
-                    🥡 Ritiro
-                  </button>
+                {/* Selettore Ritiro / Consegna sempre visibili */}
+<div className="grid grid-cols-2 gap-2 pt-2">
+  <button
+    type="button"
+    disabled={!restaurant?.allow_takeaway}
+    onClick={() => restaurant?.allow_takeaway && setOrderType('takeaway')}
+    className={`p-2.5 rounded-lg text-xs font-bold border transition ${
+      restaurant?.allow_takeaway
+        ? (orderType === 'takeaway' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700')
+        : 'bg-slate-900/50 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+    }`}
+  >
+    🥡 Ritiro {restaurant?.allow_takeaway ? '' : '(Non disp.)'}
+  </button>
 
-                  <button
-                    type="button"
-                    disabled={!restaurant?.allow_delivery}
-                    onClick={() => restaurant?.allow_delivery && setOrderType('delivery')}
-                    className={`p-2.5 rounded-lg text-xs font-bold border transition ${
-                      restaurant?.allow_delivery 
-                        ? (orderType === 'delivery' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700')
-                        : 'bg-slate-900/50 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
-                    }`}
-                  >
-                    🛵 Consegna {restaurant?.allow_delivery ? `(€${Number(restaurant?.delivery_fee || 0).toFixed(2)})` : '(Non disp.)'}
-                  </button>
-                </div>
+  <button
+    type="button"
+    disabled={!restaurant?.allow_delivery}
+    onClick={() => restaurant?.allow_delivery && setOrderType('delivery')}
+    className={`p-2.5 rounded-lg text-xs font-bold border transition ${
+      restaurant?.allow_delivery 
+        ? (orderType === 'delivery' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700')
+        : 'bg-slate-900/50 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+    }`}
+  >
+    🛵 Consegna {restaurant?.allow_delivery ? `(€${Number(restaurant?.delivery_fee || 0).toFixed(2)})` : '(Non disp.)'}
+  </button>
+</div>
 
                 {/* Selezione Data e Orario Ritiro/Consegna */}
                 <div className="grid grid-cols-2 gap-3">
