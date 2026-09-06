@@ -142,7 +142,6 @@ function MainRestaurantContent() {
   const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Filtra gli orari trascorsi se la data selezionata è oggi
   const filterAvailableSlots = (slots: string[], selectedDate: string) => {
     if (selectedDate !== todayDate) return slots;
     const now = new Date();
@@ -158,7 +157,7 @@ function MainRestaurantContent() {
   const availableOrderSlots = filterAvailableSlots(restaurant?.order_time_slots || [], orderDate);
   const availableResSlots = filterAvailableSlots(restaurant?.reservation_time_slots || [], resDate);
 
-  // Invio Ordine (Comanda salvata separatamente)
+  // Invio Ordine salvato sulla nuova tabella 'orders'
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName || !customerPhone || cart.length === 0) return;
@@ -171,20 +170,20 @@ function MainRestaurantContent() {
       itemNote: c.itemNote || '',
     }));
 
-    const numGuests = totalItems || 1;
+    const finalPrice = totalAmount + (orderType === 'delivery' ? (restaurant?.delivery_fee || 0) : 0);
 
-    const { error } = await supabase.from('reservations').insert([
+    const { error } = await supabase.from('orders').insert([
       {
         restaurant_id: restaurant.id,
         customer_name: customerName,
         customer_phone: customerPhone,
-        reservation_date: orderDate || todayDate,
-        reservation_time: pickupTime,
-        notes: `[ORDINE ${orderType.toUpperCase()}] ${generalNotes.trim()}`,
+        order_type: orderType,
+        pickup_date: orderDate || todayDate,
+        pickup_time: pickupTime,
         items: formattedItems,
+        notes: generalNotes.trim() || null,
+        total_amount: finalPrice,
         status: 'pending',
-        guests: numGuests,
-        party_size: numGuests,
       },
     ]);
 
@@ -201,6 +200,7 @@ function MainRestaurantContent() {
     setSendingOrder(false);
   };
 
+  // Invio Prenotazione salvata sulla tabella 'reservations'
   const handleSendReservation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resPhone.trim() && !resEmail.trim()) {
@@ -222,7 +222,7 @@ function MainRestaurantContent() {
         reservation_time: resTime,
         guests: numGuests,
         party_size: numGuests,
-        notes: `[PRENOTAZIONE TAVOLO] ${resNotes.trim()} (GoogleRef: ${rwgToken || 'Direct'})`,
+        notes: resNotes.trim() ? `${resNotes.trim()} (Ref: ${rwgToken || 'Direct'})` : `(Ref: ${rwgToken || 'Direct'})`,
         status: 'pending',
       },
     ]);
@@ -441,6 +441,11 @@ function MainRestaurantContent() {
                   </div>
                 </div>
 
+                {/* Nota Informativa Privacy */}
+                <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+                  Inviando la richiesta accetti il trattamento dei dati personali per la gestione della prenotazione.
+                </p>
+
                 <button
                   type="submit"
                   disabled={sendingRes}
@@ -518,36 +523,35 @@ function MainRestaurantContent() {
                   ))}
                 </div>
 
-                {/* Selettore Ritiro / Consegna sempre visibili */}
-<div className="grid grid-cols-2 gap-2 pt-2">
-  <button
-    type="button"
-    disabled={!restaurant?.allow_takeaway}
-    onClick={() => restaurant?.allow_takeaway && setOrderType('takeaway')}
-    className={`p-2.5 rounded-lg text-xs font-bold border transition ${
-      restaurant?.allow_takeaway
-        ? (orderType === 'takeaway' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700')
-        : 'bg-slate-900/50 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
-    }`}
-  >
-    🥡 Ritiro {restaurant?.allow_takeaway ? '' : '(Non disp.)'}
-  </button>
+                {/* Selettore Ritiro / Consegna */}
+                <div className="grid grid-cols-2 gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={!restaurant?.allow_takeaway}
+                    onClick={() => restaurant?.allow_takeaway && setOrderType('takeaway')}
+                    className={`p-2.5 rounded-lg text-xs font-bold border transition ${
+                      restaurant?.allow_takeaway 
+                        ? (orderType === 'takeaway' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700')
+                        : 'bg-slate-900/50 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+                    }`}
+                  >
+                    🥡 Ritiro {restaurant?.allow_takeaway ? '' : '(Non disp.)'}
+                  </button>
 
-  <button
-    type="button"
-    disabled={!restaurant?.allow_delivery}
-    onClick={() => restaurant?.allow_delivery && setOrderType('delivery')}
-    className={`p-2.5 rounded-lg text-xs font-bold border transition ${
-      restaurant?.allow_delivery 
-        ? (orderType === 'delivery' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700')
-        : 'bg-slate-900/50 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
-    }`}
-  >
-    🛵 Consegna {restaurant?.allow_delivery ? `(€${Number(restaurant?.delivery_fee || 0).toFixed(2)})` : '(Non disp.)'}
-  </button>
-</div>
+                  <button
+                    type="button"
+                    disabled={!restaurant?.allow_delivery}
+                    onClick={() => restaurant?.allow_delivery && setOrderType('delivery')}
+                    className={`p-2.5 rounded-lg text-xs font-bold border transition ${
+                      restaurant?.allow_delivery 
+                        ? (orderType === 'delivery' ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-slate-400 border-slate-700')
+                        : 'bg-slate-900/50 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+                    }`}
+                  >
+                    🛵 Consegna {restaurant?.allow_delivery ? `(€${Number(restaurant?.delivery_fee || 0).toFixed(2)})` : '(Non disp.)'}
+                  </button>
+                </div>
 
-                {/* Selezione Data e Orario Ritiro/Consegna */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-slate-400 mb-1">Data</label>
@@ -614,12 +618,17 @@ function MainRestaurantContent() {
                   </div>
                 </div>
 
+                {/* Nota Informativa Privacy */}
+                <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+                  Inviando l'ordine accetti il trattamento dei dati personali per la gestione del servizio.
+                </p>
+
                 <button
                   type="submit"
                   disabled={sendingOrder}
                   className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold p-3 rounded-lg transition-colors text-xs"
                 >
-                  {sendingOrder ? 'Invio in corso...' : `Invia Ordine (€${(totalAmount + (orderType === 'delivery' ? (restaurant.delivery_fee || 0) : 0)).toFixed(2)})`}
+                  {sendingOrder ? 'Invio in corso...' : `Invia Ordine (€${(totalAmount + (orderType === 'delivery' ? (restaurant?.delivery_fee || 0) : 0)).toFixed(2)})`}
                 </button>
               </form>
             )}
