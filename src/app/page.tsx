@@ -17,6 +17,7 @@ function PublicPageContent() {
     initialAction === 'reserve' ? 'reserve' : 'order'
   );
 
+  // Stato Carrello & Form
   const [cart, setCart] = useState<Record<string, { item: any; quantity: number; note: string }>>({});
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -24,6 +25,7 @@ function PublicPageContent() {
   const [pickupTime, setPickupTime] = useState('19:30');
   const [generalNotes, setGeneralNotes] = useState('');
 
+  // Stato Prenotazione
   const [resDate, setResDate] = useState(new Date().toISOString().split('T')[0]);
   const [resTime, setResTime] = useState('20:00');
   const [resGuests, setResGuests] = useState(2);
@@ -39,28 +41,42 @@ function PublicPageContent() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
- useEffect(() => {
+  useEffect(() => {
     const loadData = async () => {
       try {
+        // 1. Carica Ristorante
         const { data: restData } = await supabase.from('restaurants').select('*').limit(1).maybeSingle();
-        if (restData) {
-          setRestaurant(restData);
+        if (restData) setRestaurant(restData);
 
-          // Caricamento indipendente delle tabelle
-          const catRes = await supabase.from('categories').select('*').eq('restaurant_id', restData.id);
-          if (catRes.data) setCategories(catRes.data);
+        // 2. Carica Categorie
+        const catRes = await supabase.from('categories').select('*');
+        if (catRes.data) {
+          const sortedCats = catRes.data.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+          setCategories(sortedCats);
+        }
 
-          const itemRes = await supabase.from('items').select('*').eq('restaurant_id', restData.id);
-          if (itemRes.data) setItems(itemRes.data);
+        // 3. Carica Piatti
+        const itemRes = await supabase.from('items').select('*');
+        if (itemRes.data) {
+          setItems(itemRes.data.filter((i) => i.is_available !== false));
+        }
 
-          const promoRes = await supabase.from('promotions').select('*').eq('restaurant_id', restData.id);
-          if (promoRes.data) setPromotions(promoRes.data);
+        // 4. Carica Promozioni
+        const promoRes = await supabase.from('promotions').select('*');
+        if (promoRes.data) {
+          setPromotions(promoRes.data.filter((p) => p.is_active !== false));
+        }
 
-          const discRes = await supabase.from('discount_rules').select('*').eq('restaurant_id', restData.id);
-          if (discRes.data) setDiscountRules(discRes.data);
+        // 5. Carica Sconti Checkout
+        const discRes = await supabase.from('discount_rules').select('*');
+        if (discRes.data) {
+          const sortedRules = discRes.data
+            .filter((d) => d.is_active !== false)
+            .sort((a, b) => Number(b.min_amount) - Number(a.min_amount));
+          setDiscountRules(sortedRules);
         }
       } catch (err) {
-        console.error('Errore caricamento dati:', err);
+        console.error('Errore durante il caricamento dati:', err);
       } finally {
         setLoading(false);
       }
@@ -69,6 +85,7 @@ function PublicPageContent() {
     loadData();
   }, []);
 
+  // Rotazione automatica delle slide promozioni ogni 4 secondi
   useEffect(() => {
     if (promotions.length <= 1) return;
     const interval = setInterval(() => {
@@ -77,9 +94,10 @@ function PublicPageContent() {
     return () => clearInterval(interval);
   }, [promotions.length]);
 
+  // Calcolo Totale e Sconto
   const rawTotal = Object.values(cart).reduce((sum, entry) => sum + (entry.item.price * entry.quantity), 0);
-  const activeDiscount = discountRules.find((rule) => rawTotal >= rule.min_amount);
-  const discountPercent = activeDiscount ? activeDiscount.discount_percentage : 0;
+  const activeDiscount = discountRules.find((rule) => rawTotal >= Number(rule.min_amount));
+  const discountPercent = activeDiscount ? Number(activeDiscount.discount_percentage) : 0;
   const discountAmount = (rawTotal * discountPercent) / 100;
   const finalTotal = rawTotal - discountAmount;
 
@@ -118,7 +136,7 @@ function PublicPageContent() {
     }));
 
     const { error } = await supabase.from('orders').insert({
-      restaurant_id: restaurant.id,
+      restaurant_id: restaurant?.id,
       customer_name: customerName,
       customer_phone: customerPhone,
       order_type: orderType,
@@ -145,7 +163,7 @@ function PublicPageContent() {
     const rwgToken = searchParams.get('rwg_token');
 
     const { error } = await supabase.from('reservations').insert({
-      restaurant_id: restaurant.id,
+      restaurant_id: restaurant?.id,
       customer_name: customerName,
       customer_phone: customerPhone,
       party_size: resGuests,
@@ -168,11 +186,14 @@ function PublicPageContent() {
   return (
     <div className="min-h-screen bg-slate-900 text-white pb-24">
       <div className="max-w-xl mx-auto p-4 space-y-6">
+        
+        {/* Intestazione e Nome Ristorante */}
         <header className="text-center space-y-2 pt-4">
-          <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">{restaurant?.name || 'Ristorante'}</h1>
+          <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">{restaurant?.name || 'NOM SUSHI VIBES'}</h1>
           {restaurant?.description && <p className="text-xs text-slate-400 max-w-sm mx-auto">{restaurant.description}</p>}
         </header>
 
+        {/* BACHECA SLIDE PROMOZIONI (Dopo la biografia e prima dei pulsanti) */}
         {promotions.length > 0 && (
           <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 p-4 rounded-xl shadow-lg transition-all">
             <div className="space-y-1">
@@ -198,6 +219,7 @@ function PublicPageContent() {
           </div>
         )}
 
+        {/* Pulsanti Switch: Ordina Online / Prenota Tavolo */}
         <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs">
           <button
             onClick={() => { setActiveTab('order'); setOrderSuccess(false); }}
@@ -222,35 +244,58 @@ function PublicPageContent() {
             </button>
           </div>
         ) : activeTab === 'order' ? (
+          /* TAB MENU & CARRELLO */
           <div className="space-y-6">
-            {categories.map((cat) => {
-              const catItems = items.filter((i) => i.category_id === cat.id);
-              if (catItems.length === 0) return null;
-
-              return (
-                <div key={cat.id} className="space-y-3">
-                  <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
-                  <div className="space-y-2">
-                    {catItems.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
-                        <div className="space-y-0.5">
-                          <h3 className="font-bold text-xs text-white">{item.name}</h3>
-                          {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
-                          <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
-                        </div>
-                        <button
-                          onClick={() => addToCart(item)}
-                          className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
-                        >
-                          Aggiungi
-                        </button>
-                      </div>
-                    ))}
+            {categories.length === 0 ? (
+              /* Fallback se non ci sono categorie definite: mostra direttamente i piatti */
+              <div className="space-y-2">
+                {items.map((item) => (
+                  <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
+                    <div className="space-y-0.5">
+                      <h3 className="font-bold text-xs text-white">{item.name}</h3>
+                      {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
+                      <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
+                    </div>
+                    <button
+                      onClick={() => addToCart(item)}
+                      className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      Aggiungi
+                    </button>
                   </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            ) : (
+              categories.map((cat) => {
+                const catItems = items.filter((i) => i.category_id === cat.id);
+                if (catItems.length === 0) return null;
 
+                return (
+                  <div key={cat.id} className="space-y-3">
+                    <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
+                    <div className="space-y-2">
+                      {catItems.map((item) => (
+                        <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
+                          <div className="space-y-0.5">
+                            <h3 className="font-bold text-xs text-white">{item.name}</h3>
+                            {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
+                            <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
+                          </div>
+                          <button
+                            onClick={() => addToCart(item)}
+                            className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Aggiungi
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            {/* RIEPILOGO CARRELLO & SCONTI CHECKOUT */}
             {Object.keys(cart).length > 0 && (
               <form onSubmit={handleSendOrder} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
                 <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine</h3>
@@ -270,6 +315,7 @@ function PublicPageContent() {
                   ))}
                 </div>
 
+                {/* VISUALIZZAZIONE SCONTO APPLICATO */}
                 <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-xs space-y-1 font-mono">
                   <div className="flex justify-between text-slate-400">
                     <span>Subtotale:</span>
@@ -287,6 +333,7 @@ function PublicPageContent() {
                   </div>
                 </div>
 
+                {/* Form Dettagli Cliente */}
                 <div className="space-y-3 pt-2">
                   <input
                     type="text"
@@ -340,6 +387,7 @@ function PublicPageContent() {
             )}
           </div>
         ) : (
+          /* TAB PRENOTAZIONE TAVOLO */
           <form onSubmit={handleSendReservation} className="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-4 text-xs">
             <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Prenota un Tavolo</h3>
             <input
@@ -399,6 +447,7 @@ function PublicPageContent() {
             </button>
           </form>
         )}
+
       </div>
     </div>
   );
