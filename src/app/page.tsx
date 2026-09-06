@@ -10,7 +10,7 @@ function PublicPageContent() {
 
   const [restaurant, setRestaurant] = useState<any>(null);
   const [categories, setCategories] = useState<any[]>([]);
-  const [items, setItems] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
   const [discountRules, setDiscountRules] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'order' | 'reserve'>(
@@ -18,7 +18,7 @@ function PublicPageContent() {
   );
 
   // Stato Carrello & Form
-  const [cart, setCart] = useState<Record<string, { item: any; quantity: number; note: string }>>({});
+  const [cart, setCart] = useState<Record<string, { product: any; quantity: number; note: string }>>({});
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
@@ -46,8 +46,7 @@ function PublicPageContent() {
 
     const loadData = async () => {
       try {
-        // Caricamento separato e pulito dal ramo categories e products
-        const [restRes, catRes, itemRes, promoRes, discRes] = await Promise.allSettled([
+        const [restRes, catRes, prodRes, promoRes, discRes] = await Promise.allSettled([
           supabase.from('restaurants').select('*').limit(1).maybeSingle(),
           supabase.from('categories').select('*').order('sort_order', { ascending: true }),
           supabase.from('products').select('*'),
@@ -61,13 +60,28 @@ function PublicPageContent() {
           setRestaurant(restRes.value.data);
         }
 
+        let loadedCats: any[] = [];
         if (catRes.status === 'fulfilled' && catRes.value.data) {
-          setCategories(catRes.value.data);
+          loadedCats = catRes.value.data;
         }
 
-        if (itemRes.status === 'fulfilled' && itemRes.value.data) {
-          setItems(itemRes.value.data);
+        let loadedProducts: any[] = [];
+        if (prodRes.status === 'fulfilled' && prodRes.value.data) {
+          loadedProducts = prodRes.value.data;
+          setProducts(loadedProducts);
         }
+
+        // Se la tabella categories è vuota, estraiamo le categorie al volo dai prodotti per coerenza
+        if (loadedCats.length === 0 && loadedProducts.length > 0) {
+          const uniqueCatNames = Array.from(new Set(loadedProducts.map((p: any) => p.category || p.category_id).filter(Boolean)));
+          loadedCats = uniqueCatNames.map((name, index) => ({
+            id: name,
+            name: name,
+            sort_order: index
+          }));
+        }
+
+        setCategories(loadedCats);
 
         if (promoRes.status === 'fulfilled' && promoRes.value.data) {
           setPromotions(promoRes.value.data);
@@ -101,31 +115,31 @@ function PublicPageContent() {
   }, [promotions.length]);
 
   // Calcolo Totale e Sconto
-  const rawTotal = Object.values(cart).reduce((sum, entry) => sum + (entry.item.price * entry.quantity), 0);
+  const rawTotal = Object.values(cart).reduce((sum, entry) => sum + (entry.product.price * entry.quantity), 0);
   const activeDiscount = discountRules.find((rule) => rawTotal >= Number(rule.min_amount));
   const discountPercent = activeDiscount ? Number(activeDiscount.discount_percentage) : 0;
   const discountAmount = (rawTotal * discountPercent) / 100;
   const finalTotal = rawTotal - discountAmount;
 
-  const addToCart = (item: any) => {
+  const addToCart = (product: any) => {
     setCart((prev) => {
-      const existing = prev[item.id];
+      const existing = prev[product.id];
       const newQty = existing ? existing.quantity + 1 : 1;
-      return { ...prev, [item.id]: { item, quantity: newQty, note: existing?.note || '' } };
+      return { ...prev, [product.id]: { product, quantity: newQty, note: existing?.note || '' } };
     });
   };
 
-  const updateQuantity = (itemId: string, delta: number) => {
+  const updateQuantity = (productId: string, delta: number) => {
     setCart((prev) => {
-      const existing = prev[itemId];
+      const existing = prev[productId];
       if (!existing) return prev;
       const newQty = existing.quantity + delta;
       if (newQty <= 0) {
         const copy = { ...prev };
-        delete copy[itemId];
+        delete copy[productId];
         return copy;
       }
-      return { ...prev, [itemId]: { ...existing, quantity: newQty } };
+      return { ...prev, [productId]: { ...existing, quantity: newQty } };
     });
   };
 
@@ -135,9 +149,9 @@ function PublicPageContent() {
     setIsSubmitting(true);
 
     const formattedItems = Object.values(cart).map((c) => ({
-      name: c.item.name,
+      name: c.product.name,
       quantity: c.quantity,
-      price: c.item.price,
+      price: c.product.price,
       itemNote: c.note,
     }));
 
@@ -252,30 +266,29 @@ function PublicPageContent() {
         ) : activeTab === 'order' ? (
           <div className="space-y-6">
             {categories.map((cat) => {
-              // Abbinamento pulito tramite ID della tabella categories o nome corrispondente
-              const catItems = items.filter((i) => String(i.category_id) === String(cat.id) || i.category === cat.name);
-              if (catItems.length === 0) return null;
+              const catProducts = products.filter((p) => String(p.category_id) === String(cat.id) || p.category === cat.name || p.category_id === cat.name);
+              if (catProducts.length === 0) return null;
 
               return (
                 <div key={cat.id} className="space-y-3">
                   <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
                   <div className="space-y-2">
-                    {catItems.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
+                    {catProducts.map((product) => (
+                      <div key={product.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
                         <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
-                          {item.image_url ? (
-                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                          {product.image_url ? (
+                            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
                           )}
                         </div>
                         <div className="space-y-0.5 flex-1">
-                          <h3 className="font-bold text-xs text-white">{item.name}</h3>
-                          {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
-                          <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
+                          <h3 className="font-bold text-xs text-white">{product.name}</h3>
+                          {product.description && <p className="text-[11px] text-slate-400">{product.description}</p>}
+                          <span className="font-mono text-amber-400 font-bold text-xs">€{Number(product.price).toFixed(2)}</span>
                         </div>
                         <button
-                          onClick={() => addToCart(item)}
+                          onClick={() => addToCart(product)}
                           className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
                         >
                           Aggiungi
@@ -287,29 +300,29 @@ function PublicPageContent() {
               );
             })}
 
-            {/* Fallback per prodotti senza categoria assegnata */}
-            {items.filter((item) => !categories.some((cat) => String(item.category_id) === String(cat.id) || item.category === cat.name)).length > 0 && (
+            {/* Prodotti senza categoria */}
+            {products.filter((product) => !categories.some((cat) => String(product.category_id) === String(cat.id) || product.category === cat.name || product.category_id === cat.name)).length > 0 && (
               <div className="space-y-3">
-                <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">Altro</h2>
+                <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">Menu</h2>
                 <div className="space-y-2">
-                  {items
-                    .filter((item) => !categories.some((cat) => String(item.category_id) === String(cat.id) || item.category === cat.name))
-                    .map((item) => (
-                      <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
+                  {products
+                    .filter((product) => !categories.some((cat) => String(product.category_id) === String(cat.id) || product.category === cat.name || product.category_id === cat.name))
+                    .map((product) => (
+                      <div key={product.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
                         <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
-                          {item.image_url ? (
-                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                          {product.image_url ? (
+                            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
                           )}
                         </div>
                         <div className="space-y-0.5 flex-1">
-                          <h3 className="font-bold text-xs text-white">{item.name}</h3>
-                          {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
-                          <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
+                          <h3 className="font-bold text-xs text-white">{product.name}</h3>
+                          {product.description && <p className="text-[11px] text-slate-400">{product.description}</p>}
+                          <span className="font-mono text-amber-400 font-bold text-xs">€{Number(product.price).toFixed(2)}</span>
                         </div>
                         <button
-                          onClick={() => addToCart(item)}
+                          onClick={() => addToCart(product)}
                           className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
                         >
                           Aggiungi
@@ -324,16 +337,16 @@ function PublicPageContent() {
               <form onSubmit={handleSendOrder} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
                 <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine</h3>
                 <div className="space-y-2 divide-y divide-slate-700/50">
-                  {Object.values(cart).map(({ item, quantity }) => (
-                    <div key={item.id} className="pt-2 flex justify-between items-center text-xs">
+                  {Object.values(cart).map(({ product, quantity }) => (
+                    <div key={product.id} className="pt-2 flex justify-between items-center text-xs">
                       <div>
-                        <span className="font-bold text-white">{quantity}x {item.name}</span>
-                        <span className="text-slate-400 block font-mono">€{(item.price * quantity).toFixed(2)}</span>
+                        <span className="font-bold text-white">{quantity}x {product.name}</span>
+                        <span className="text-slate-400 block font-mono">€{(product.price * quantity).toFixed(2)}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateQuantity(item.id, -1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">-</button>
+                        <button type="button" onClick={() => updateQuantity(product.id, -1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">-</button>
                         <span className="font-bold text-xs">{quantity}</span>
-                        <button type="button" onClick={() => updateQuantity(item.id, 1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">+</button>
+                        <button type="button" onClick={() => updateQuantity(product.id, 1)} className="bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold">+</button>
                       </div>
                     </div>
                   ))}
