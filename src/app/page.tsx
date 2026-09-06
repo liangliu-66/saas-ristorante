@@ -46,12 +46,11 @@ function PublicPageContent() {
 
     const loadData = async () => {
       try {
-        // Caricamento parallelo con fallback per le tabelle dei piatti
-        const [restRes, catRes, itemRes, altItemRes, promoRes, discRes] = await Promise.allSettled([
+        // Caricamento parallelo puntando alla tabella corretta "products"
+        const [restRes, catRes, itemRes, promoRes, discRes] = await Promise.allSettled([
           supabase.from('restaurants').select('*').limit(1).maybeSingle(),
           supabase.from('categories').select('*'),
-          supabase.from('items').select('*'),
-          supabase.from('menu_items').select('*'), // Tabella alternativa di riserva
+          supabase.from('products').select('*'), // <-- Corretto da items a products
           supabase.from('promotions').select('*'),
           supabase.from('discount_rules').select('*')
         ]);
@@ -66,17 +65,9 @@ function PublicPageContent() {
           setCategories(catRes.value.data);
         }
 
-        // Seleziona i piatti dalla tabella items o da menu_items se la prima è vuota
-        let rawItems: any[] = [];
-        if (itemRes.status === 'fulfilled' && itemRes.value.data && itemRes.value.data.length > 0) {
-          rawItems = itemRes.value.data;
-        } else if (altItemRes.status === 'fulfilled' && altItemRes.value.data) {
-          rawItems = altItemRes.value.data;
+        if (itemRes.status === 'fulfilled' && itemRes.value.data) {
+          setItems(itemRes.value.data);
         }
-
-        console.log("Piatti grezzi ricevuti dal DB:", rawItems);
-        // Mostriamo TUTTI i piatti senza filtri restrittivi sulla disponibilità
-        setItems(rawItems);
 
         if (promoRes.status === 'fulfilled' && promoRes.value.data) {
           setPromotions(promoRes.value.data);
