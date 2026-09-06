@@ -42,47 +42,56 @@ function PublicPageContent() {
   );
 
   useEffect(() => {
+    let isMounted = true;
+
     const loadData = async () => {
       try {
-        // 1. Carica Ristorante
-        const { data: restData } = await supabase.from('restaurants').select('*').limit(1).maybeSingle();
-        if (restData) setRestaurant(restData);
+        // Caricamento Parallelo Resiliente con Promise.allSettled
+        const [restRes, catRes, itemRes, promoRes, discRes] = await Promise.allSettled([
+          supabase.from('restaurants').select('*').limit(1).maybeSingle(),
+          supabase.from('categories').select('*'),
+          supabase.from('items').select('*'),
+          supabase.from('promotions').select('*'),
+          supabase.from('discount_rules').select('*')
+        ]);
 
-        // 2. Carica Categorie
-        const catRes = await supabase.from('categories').select('*');
-        if (catRes.data) {
-          const sortedCats = catRes.data.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        if (!isMounted) return;
+
+        if (restRes.status === 'fulfilled' && restRes.value.data) {
+          setRestaurant(restRes.value.data);
+        }
+
+        if (catRes.status === 'fulfilled' && catRes.value.data) {
+          const sortedCats = catRes.value.data.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
           setCategories(sortedCats);
         }
 
-        // 3. Carica Piatti
-        const itemRes = await supabase.from('items').select('*');
-        if (itemRes.data) {
-          setItems(itemRes.data.filter((i) => i.is_available !== false));
+        if (itemRes.status === 'fulfilled' && itemRes.value.data) {
+          setItems(itemRes.value.data.filter((i: any) => i.is_available !== false));
         }
 
-        // 4. Carica Promozioni
-        const promoRes = await supabase.from('promotions').select('*');
-        if (promoRes.data) {
-          setPromotions(promoRes.data.filter((p) => p.is_active !== false));
+        if (promoRes.status === 'fulfilled' && promoRes.value.data) {
+          setPromotions(promoRes.value.data.filter((p: any) => p.is_active !== false));
         }
 
-        // 5. Carica Sconti Checkout
-        const discRes = await supabase.from('discount_rules').select('*');
-        if (discRes.data) {
-          const sortedRules = discRes.data
-            .filter((d) => d.is_active !== false)
-            .sort((a, b) => Number(b.min_amount) - Number(a.min_amount));
+        if (discRes.status === 'fulfilled' && discRes.value.data) {
+          const sortedRules = discRes.value.data
+            .filter((d: any) => d.is_active !== false)
+            .sort((a: any, b: any) => Number(b.min_amount) - Number(a.min_amount));
           setDiscountRules(sortedRules);
         }
       } catch (err) {
         console.error('Errore durante il caricamento dati:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     loadData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Rotazione automatica delle slide promozioni ogni 4 secondi
@@ -193,7 +202,7 @@ function PublicPageContent() {
           {restaurant?.description && <p className="text-xs text-slate-400 max-w-sm mx-auto">{restaurant.description}</p>}
         </header>
 
-        {/* BACHECA SLIDE PROMOZIONI (Dopo la biografia e prima dei pulsanti) */}
+        {/* BACHECA SLIDE PROMOZIONI */}
         {promotions.length > 0 && (
           <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 p-4 rounded-xl shadow-lg transition-all">
             <div className="space-y-1">
@@ -246,8 +255,8 @@ function PublicPageContent() {
         ) : activeTab === 'order' ? (
           /* TAB MENU & CARRELLO */
           <div className="space-y-6">
-            {categories.length === 0 ? (
-              /* Fallback se non ci sono categorie definite: mostra direttamente i piatti */
+            {categories.length === 0 || items.every((i) => !i.category_id) ? (
+              /* Fallback: Mostra direttamente la lista dei piatti se manca l'associazione categorie */
               <div className="space-y-2">
                 {items.map((item) => (
                   <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
@@ -315,7 +324,6 @@ function PublicPageContent() {
                   ))}
                 </div>
 
-                {/* VISUALIZZAZIONE SCONTO APPLICATO */}
                 <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-xs space-y-1 font-mono">
                   <div className="flex justify-between text-slate-400">
                     <span>Subtotale:</span>
@@ -333,7 +341,6 @@ function PublicPageContent() {
                   </div>
                 </div>
 
-                {/* Form Dettagli Cliente */}
                 <div className="space-y-3 pt-2">
                   <input
                     type="text"
