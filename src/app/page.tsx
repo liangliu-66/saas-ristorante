@@ -248,15 +248,19 @@ function PublicPageContent() {
               Nuovo Ordine / Prenotazione
             </button>
           </div>
-        ) : activeTab === 'order' ? (
+       ) : activeTab === 'order' ? (
           <div className="space-y-6">
             {categories.length === 0 ? (
               <div className="space-y-2">
                 {items.map((item) => (
                   <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
-                    {item.image_url && (
-                      <img src={item.image_url} alt={item.name} className="w-16 h-16 object-cover rounded-lg shrink-0 border border-slate-700" />
-                    )}
+                    <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
+                      {item.image_url ? (
+                        <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
+                      )}
+                    </div>
                     <div className="space-y-0.5 flex-1">
                       <h3 className="font-bold text-xs text-white">{item.name}</h3>
                       {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
@@ -273,7 +277,8 @@ function PublicPageContent() {
               </div>
             ) : (
               categories.map((cat) => {
-                const catItems = items.filter((i) => i.category_id === cat.id);
+                // Filtriamo i piatti associati a questa categoria (supportando sia category_id che category)
+                const catItems = items.filter((i) => i.category_id === cat.id || i.category === cat.name);
                 if (catItems.length === 0) return null;
 
                 return (
@@ -282,9 +287,13 @@ function PublicPageContent() {
                     <div className="space-y-2">
                       {catItems.map((item) => (
                         <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
-                          {item.image_url && (
-                            <img src={item.image_url} alt={item.name} className="w-16 h-16 object-cover rounded-lg shrink-0 border border-slate-700" />
-                          )}
+                          <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
+                            {item.image_url ? (
+                              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
+                            )}
+                          </div>
                           <div className="space-y-0.5 flex-1">
                             <h3 className="font-bold text-xs text-white">{item.name}</h3>
                             {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
