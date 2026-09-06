@@ -13,6 +13,7 @@ interface OrderItem {
   notes: string;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   guests: number;
+  party_size?: number;
   reservation_date: string;
   reservation_time: string;
   created_at: string;
@@ -22,7 +23,8 @@ export default function LiveDashboardPage() {
   const [restaurant, setRestaurant] = useState<any>(null);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'reservations'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'reservations'>('reservations');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
   const [newOrderAlert, setNewOrderAlert] = useState(false);
 
   const router = useRouter();
@@ -36,7 +38,7 @@ export default function LiveDashboardPage() {
       .from('reservations')
       .select('*')
       .eq('restaurant_id', restaurantId)
-      .order('created_at', { ascending: false });
+      .order('reservation_time', { ascending: true });
 
     if (!error && data) {
       setOrders(data);
@@ -60,7 +62,6 @@ export default function LiveDashboardPage() {
       await fetchOrders(restData.id);
       setLoading(false);
 
-      // Realtime per Ordini/Prenotazioni
       const channel = supabase
         .channel('realtime_live_dashboard')
         .on(
@@ -72,7 +73,7 @@ export default function LiveDashboardPage() {
             filter: `restaurant_id=eq.${restData.id}`,
           },
           (payload) => {
-            setOrders((prev) => [payload.new as OrderItem, ...prev]);
+            setOrders((prev) => [...prev, payload.new as OrderItem].sort((a, b) => (a.reservation_time > b.reservation_time ? 1 : -1)));
             setNewOrderAlert(true);
             setTimeout(() => setNewOrderAlert(false), 5000);
           }
@@ -121,167 +122,239 @@ export default function LiveDashboardPage() {
 
   if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento ordini live...</div>;
 
+  // Filtraggio Asporto vs Prenotazioni
   const foodOrders = orders.filter((o) => o.notes?.includes('[ORDINE'));
   const tableReservations = orders.filter((o) => !o.notes?.includes('[ORDINE'));
-  const currentList = activeTab === 'orders' ? foodOrders : tableReservations;
+  const rawList = activeTab === 'orders' ? foodOrders : tableReservations;
 
-  const getStatusBadge = (status: OrderItem['status']) => {
-    switch (status) {
-      case 'pending':
-        return <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full text-xs font-bold">In Attesa</span>;
-      case 'confirmed':
-        return <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2.5 py-1 rounded-full text-xs font-bold">Confermato</span>;
-      case 'preparing':
-        return <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full text-xs font-bold">In Cucinazione</span>;
-      case 'ready':
-        return <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full text-xs font-bold">Pronto</span>;
-      case 'completed':
-        return <span className="bg-slate-700 text-slate-400 border border-slate-600 px-2.5 py-1 rounded-full text-xs font-bold">Completato</span>;
-      case 'cancelled':
-        return <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full text-xs font-bold">Annullato</span>;
-    }
+  // Filtraggio per Stato
+  const filteredList = rawList.filter((item) => {
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'pending') return item.status === 'pending';
+    if (statusFilter === 'confirmed') return item.status === 'confirmed' || item.status === 'preparing' || item.status === 'ready';
+    if (statusFilter === 'completed') return item.status === 'completed';
+    if (statusFilter === 'cancelled') return item.status === 'cancelled';
+    return true;
+  });
+
+  // Divisione Pranzo (< 16:00) e Cena (>= 16:00)
+  const lunchList = filteredList.filter((i) => {
+    const hour = parseInt((i.reservation_time || '12:00').split(':')[0], 10);
+    return hour < 16;
+  });
+
+  const dinnerList = filteredList.filter((i) => {
+    const hour = parseInt((i.reservation_time || '12:00').split(':')[0], 10);
+    return hour >= 16;
+  });
+
+  const cleanNotes = (notes: string) => {
+    return notes.replace(/\[PRENOTAZIONE TAVOLO\]\s*/g, '').replace(/\(GoogleRef:[^)]*\)/g, '').trim();
   };
 
-  return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
-        
-        {newOrderAlert && (
-          <div className="bg-amber-500 text-slate-900 font-extrabold p-4 rounded-xl shadow-lg animate-bounce flex justify-between items-center">
-            <span>🔔 NUOVA RICHIESTA RICEVUTA IN TEMPO REALE!</span>
-            <button onClick={() => setNewOrderAlert(false)} className="text-xs bg-slate-900 text-white px-2 py-1 rounded">Chiudi</button>
+  const renderCard = (item: OrderItem) => {
+    const numPeople = item.guests || item.party_size || 1;
+
+    return (
+      <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3 shadow-sm">
+        {/* riga 1: Nome, Persone, Orario, Stato */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-2.5">
+          <div className="flex items-center gap-3">
+            <h3 className="font-extrabold text-base text-white">{item.customer_name}</h3>
+            
+            {activeTab === 'reservations' && (
+              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-0.5 rounded-md text-xs font-black">
+                👥 {numPeople} {numPeople === 1 ? 'persona' : 'persone'}
+              </span>
+            )}
+
+            <span className="bg-slate-900 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-md text-xs font-mono font-bold">
+              🕒 {item.reservation_time}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400 font-medium">{item.reservation_date}</span>
+            {item.status === 'pending' && <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded text-xs font-bold">Da Confermare</span>}
+            {item.status === 'confirmed' && <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded text-xs font-bold">Confermato</span>}
+            {item.status === 'preparing' && <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded text-xs font-bold">In Preparazione</span>}
+            {item.status === 'ready' && <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded text-xs font-bold">Pronto</span>}
+            {item.status === 'completed' && <span className="bg-slate-700 text-slate-300 border border-slate-600 px-2 py-0.5 rounded text-xs font-bold">Completato</span>}
+            {item.status === 'cancelled' && <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded text-xs font-bold">Annullato</span>}
+          </div>
+        </div>
+
+        {/* riga 2: Recapiti */}
+        <div className="text-xs text-amber-400 font-semibold flex flex-wrap items-center gap-4">
+          <span>📞 {item.customer_phone || 'Nessun telefono'}</span>
+          {item.customer_email && <span>✉️ {item.customer_email}</span>}
+        </div>
+
+        {/* riga 3: Note */}
+        {cleanNotes(item.notes) && (
+          <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 text-xs text-slate-300">
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note:</span>
+            <p className="whitespace-pre-line leading-snug">{cleanNotes(item.notes)}</p>
           </div>
         )}
 
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-6 rounded-xl border border-slate-700 gap-4">
-          <div>
-            <span className="text-xs text-amber-500 font-semibold uppercase tracking-wider">Dashboard Live</span>
-            <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
-            <p className="text-slate-400 text-xs mt-1">
-              URL Menu: <a href="/" target="_blank" className="text-amber-500 hover:underline">Vedi Sito Pubblico</a>
-            </p>
+        {/* riga 4: Azioni */}
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center gap-2">
+            {item.status === 'pending' && (
+              <button
+                onClick={() => handleStatusChange(item.id, 'confirmed')}
+                className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+              >
+                ✓ Conferma
+              </button>
+            )}
+
+            {item.status !== 'completed' && item.status !== 'cancelled' && (
+              <button
+                onClick={() => handleStatusChange(item.id, 'completed')}
+                className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+              >
+                ✓ Segna Completato
+              </button>
+            )}
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 text-sm font-bold px-4 py-2 rounded-lg transition-colors">
-              📖 Modifica Carta / Menu
+          {item.status !== 'cancelled' && (
+            <button
+              onClick={() => handleStatusChange(item.id, 'cancelled')}
+              className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors"
+            >
+              Annulla
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6">
+      <div className="max-w-5xl mx-auto space-y-5">
+        
+        {newOrderAlert && (
+          <div className="bg-amber-500 text-slate-900 font-extrabold p-3 rounded-xl shadow-lg animate-bounce flex justify-between items-center text-xs">
+            <span>🔔 NUOVA RICHIESTA RICEVUTA IN TEMPO REALE!</span>
+            <button onClick={() => setNewOrderAlert(false)} className="bg-slate-900 text-white px-2 py-1 rounded">Chiudi</button>
+          </div>
+        )}
+
+        {/* Navbar Dashboard */}
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-4 sm:p-5 rounded-xl border border-slate-700 gap-3">
+          <div>
+            <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Pannello Live</span>
+            <h1 className="text-xl font-black">{restaurant?.name}</h1>
+          </div>
+
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Link href="/dashboard/orders" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-2 rounded-lg transition-colors">
+              📖 Menu
             </Link>
-            <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
-              ⚙️ Impostazioni & Orari
+            <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-3 py-2 rounded-lg transition-colors">
+              ⚙️ Impostazioni
             </Link>
-            <button onClick={handleLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-lg border border-red-500/20 transition-colors">
+            <button onClick={handleLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold px-3 py-2 rounded-lg border border-red-500/20 transition-colors">
               Esci
             </button>
           </div>
         </header>
 
+        {/* Tab Tipo (Ordini vs Prenotazioni) */}
         <div className="flex border-b border-slate-800 gap-4">
           <button
-            onClick={() => setActiveTab('orders')}
-            className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'orders' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>🛍️ Ordini Asporto & Delivery</span>
-            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-xs">{foodOrders.length}</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('reservations')}
-            className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
+            className={`pb-2.5 text-xs font-extrabold border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === 'reservations' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
             <span>📅 Prenotazioni Tavolo</span>
-            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-xs">{tableReservations.length}</span>
+            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-[10px]">{tableReservations.length}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`pb-2.5 text-xs font-extrabold border-b-2 transition-colors flex items-center gap-2 ${
+              activeTab === 'orders' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>🛍️ Ordini Asporto & Delivery</span>
+            <span className="bg-slate-800 px-2 py-0.5 rounded-full text-[10px]">{foodOrders.length}</span>
           </button>
         </div>
 
-        <section className="space-y-4">
-          {currentList.length === 0 ? (
-            <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 text-center text-slate-400 text-sm">
-              Nessuna richiesta presente in questa sezione.
-            </div>
-          ) : (
-            currentList.map((item) => (
-              <div key={item.id} className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-700/60 pb-3">
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-bold text-lg">{item.customer_name}</h3>
-                      {getStatusBadge(item.status)}
-                    </div>
-                    <p className="text-xs text-amber-500 font-semibold mt-0.5">
-                      📞 {item.customer_phone} {item.customer_email && `| ✉️ ${item.customer_email}`}
-                    </p>
-                  </div>
+        {/* Filtri Stato */}
+        <div className="flex flex-wrap gap-1.5 bg-slate-800/60 p-2 rounded-xl border border-slate-700/80 text-xs">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-3 py-1 rounded-lg font-bold transition-colors ${statusFilter === 'all' ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white'}`}
+          >
+            Tutti ({rawList.length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('pending')}
+            className={`px-3 py-1 rounded-lg font-bold transition-colors ${statusFilter === 'pending' ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white'}`}
+          >
+            Da Confermare ({rawList.filter(i => i.status === 'pending').length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('confirmed')}
+            className={`px-3 py-1 rounded-lg font-bold transition-colors ${statusFilter === 'confirmed' ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white'}`}
+          >
+            Confermati ({rawList.filter(i => ['confirmed', 'preparing', 'ready'].includes(i.status)).length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('completed')}
+            className={`px-3 py-1 rounded-lg font-bold transition-colors ${statusFilter === 'completed' ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white'}`}
+          >
+            Completati ({rawList.filter(i => i.status === 'completed').length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('cancelled')}
+            className={`px-3 py-1 rounded-lg font-bold transition-colors ${statusFilter === 'cancelled' ? 'bg-amber-500 text-slate-900' : 'text-slate-400 hover:text-white'}`}
+          >
+            Annullati ({rawList.filter(i => i.status === 'cancelled').length})
+          </button>
+        </div>
 
-                  <div className="text-right text-xs text-slate-400">
-                    <div>Data: <strong className="text-white">{item.reservation_date}</strong> ore <strong className="text-white">{item.reservation_time}</strong></div>
-                    <div className="text-[10px] text-slate-500">Ricevuto: {new Date(item.created_at).toLocaleString('it-IT')}</div>
-                  </div>
+        {/* Elenco diviso Pranzo / Cena */}
+        {filteredList.length === 0 ? (
+          <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 text-center text-slate-400 text-xs">
+            Nessun elemento corrisponde ai filtri selezionati.
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Blocco Pranzo (< 16:00) */}
+            {lunchList.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-1">
+                  <span className="text-amber-500 font-extrabold text-sm uppercase tracking-wider">☀️ PRANZO</span>
+                  <span className="text-xs text-slate-400 font-semibold">({lunchList.length})</span>
                 </div>
-
-                <div className="bg-slate-900 p-4 rounded-lg border border-slate-700/80 text-sm text-slate-300">
-                  <span className="text-xs font-bold text-slate-400 block mb-1">Dettagli:</span>
-                  <p className="whitespace-pre-line leading-relaxed">{item.notes}</p>
-                  {activeTab === 'reservations' && (
-                    <span className="text-xs text-amber-400 font-semibold mt-2 block">👥 Commensali: {item.guests} persone</span>
-                  )}
+                <div className="space-y-3">
+                  {lunchList.map(renderCard)}
                 </div>
+              </section>
+            )}
 
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <span className="text-xs text-slate-400 mr-2">Stato:</span>
-                  
-                  {item.status === 'pending' && (
-                    <button
-                      onClick={() => handleStatusChange(item.id, 'confirmed')}
-                      className="bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      ✓ Conferma
-                    </button>
-                  )}
-
-                  {activeTab === 'orders' && item.status === 'confirmed' && (
-                    <button
-                      onClick={() => handleStatusChange(item.id, 'preparing')}
-                      className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      🍳 In Cucinazione
-                    </button>
-                  )}
-
-                  {activeTab === 'orders' && item.status === 'preparing' && (
-                    <button
-                      onClick={() => handleStatusChange(item.id, 'ready')}
-                      className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      🛵 Pronto
-                    </button>
-                  )}
-
-                  {item.status !== 'completed' && item.status !== 'cancelled' && (
-                    <button
-                      onClick={() => handleStatusChange(item.id, 'completed')}
-                      className="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      ✓ Segna Completato
-                    </button>
-                  )}
-
-                  {item.status !== 'cancelled' && (
-                    <button
-                      onClick={() => handleStatusChange(item.id, 'cancelled')}
-                      className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ml-auto"
-                    >
-                      Annulla
-                    </button>
-                  )}
+            {/* Blocco Cena (>= 16:00) */}
+            {dinnerList.length > 0 && (
+              <section className="space-y-3 pt-2">
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-1">
+                  <span className="text-amber-500 font-extrabold text-sm uppercase tracking-wider">🌙 CENA</span>
+                  <span className="text-xs text-slate-400 font-semibold">({dinnerList.length})</span>
                 </div>
-              </div>
-            ))
-          )}
-        </section>
+                <div className="space-y-3">
+                  {dinnerList.map(renderCard)}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
 
       </div>
     </div>
