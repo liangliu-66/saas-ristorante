@@ -46,9 +46,10 @@ function PublicPageContent() {
 
     const loadData = async () => {
       try {
+        // Caricamento separato e pulito dal ramo categories e products
         const [restRes, catRes, itemRes, promoRes, discRes] = await Promise.allSettled([
           supabase.from('restaurants').select('*').limit(1).maybeSingle(),
-          supabase.from('categories').select('*'),
+          supabase.from('categories').select('*').order('sort_order', { ascending: true }),
           supabase.from('products').select('*'),
           supabase.from('promotions').select('*'),
           supabase.from('discount_rules').select('*')
@@ -248,68 +249,75 @@ function PublicPageContent() {
               Nuovo Ordine / Prenotazione
             </button>
           </div>
-       ) : activeTab === 'order' ? (
+        ) : activeTab === 'order' ? (
           <div className="space-y-6">
-            {categories.length === 0 ? (
-              <div className="space-y-2">
-                {items.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
-                    <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
-                      {item.image_url ? (
-                        <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
-                      )}
-                    </div>
-                    <div className="space-y-0.5 flex-1">
-                      <h3 className="font-bold text-xs text-white">{item.name}</h3>
-                      {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
-                      <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
-                    </div>
-                    <button
-                      onClick={() => addToCart(item)}
-                      className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
-                    >
-                      Aggiungi
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              categories.map((cat) => {
-                const catItems = items.filter((i) => i.category_id === cat.id || i.category === cat.name);
-                if (catItems.length === 0) return null;
+            {categories.map((cat) => {
+              // Abbinamento pulito tramite ID della tabella categories o nome corrispondente
+              const catItems = items.filter((i) => String(i.category_id) === String(cat.id) || i.category === cat.name);
+              if (catItems.length === 0) return null;
 
-                return (
-                  <div key={cat.id} className="space-y-3">
-                    <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
-                    <div className="space-y-2">
-                      {catItems.map((item) => (
-                        <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
-                          <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
-                            {item.image_url ? (
-                              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
-                            )}
-                          </div>
-                          <div className="space-y-0.5 flex-1">
-                            <h3 className="font-bold text-xs text-white">{item.name}</h3>
-                            {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
-                            <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
-                          </div>
-                          <button
-                            onClick={() => addToCart(item)}
-                            className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
-                          >
-                            Aggiungi
-                          </button>
+              return (
+                <div key={cat.id} className="space-y-3">
+                  <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
+                  <div className="space-y-2">
+                    {catItems.map((item) => (
+                      <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
+                        <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
+                          {item.image_url ? (
+                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
+                          )}
                         </div>
-                      ))}
-                    </div>
+                        <div className="space-y-0.5 flex-1">
+                          <h3 className="font-bold text-xs text-white">{item.name}</h3>
+                          {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
+                          <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
+                        </div>
+                        <button
+                          onClick={() => addToCart(item)}
+                          className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                        >
+                          Aggiungi
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                );
-              })
+                </div>
+              );
+            })}
+
+            {/* Fallback per prodotti senza categoria assegnata */}
+            {items.filter((item) => !categories.some((cat) => String(item.category_id) === String(cat.id) || item.category === cat.name)).length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">Altro</h2>
+                <div className="space-y-2">
+                  {items
+                    .filter((item) => !categories.some((cat) => String(item.category_id) === String(cat.id) || item.category === cat.name))
+                    .map((item) => (
+                      <div key={item.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
+                        <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
+                          {item.image_url ? (
+                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
+                          )}
+                        </div>
+                        <div className="space-y-0.5 flex-1">
+                          <h3 className="font-bold text-xs text-white">{item.name}</h3>
+                          {item.description && <p className="text-[11px] text-slate-400">{item.description}</p>}
+                          <span className="font-mono text-amber-400 font-bold text-xs">€{Number(item.price).toFixed(2)}</span>
+                        </div>
+                        <button
+                          onClick={() => addToCart(item)}
+                          className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                        >
+                          Aggiungi
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
             )}
 
             {Object.keys(cart).length > 0 && (
