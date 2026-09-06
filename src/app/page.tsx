@@ -46,9 +46,8 @@ function PublicPageContent() {
 
     const loadData = async () => {
       try {
-        const [restRes, catRes, prodRes, promoRes, discRes] = await Promise.allSettled([
+        const [restRes, prodRes, promoRes, discRes] = await Promise.allSettled([
           supabase.from('restaurants').select('*').limit(1).maybeSingle(),
-          supabase.from('categories').select('*').order('sort_order', { ascending: true }),
           supabase.from('products').select('*'),
           supabase.from('promotions').select('*'),
           supabase.from('discount_rules').select('*')
@@ -56,13 +55,10 @@ function PublicPageContent() {
 
         if (!isMounted) return;
 
+        let restData = null;
         if (restRes.status === 'fulfilled' && restRes.value.data) {
-          setRestaurant(restRes.value.data);
-        }
-
-        let loadedCats: any[] = [];
-        if (catRes.status === 'fulfilled' && catRes.value.data) {
-          loadedCats = catRes.value.data;
+          restData = restRes.value.data;
+          setRestaurant(restData);
         }
 
         let loadedProducts: any[] = [];
@@ -71,17 +67,9 @@ function PublicPageContent() {
           setProducts(loadedProducts);
         }
 
-        // Se la tabella categories è vuota, estraiamo le categorie al volo dai prodotti per coerenza
-        if (loadedCats.length === 0 && loadedProducts.length > 0) {
-          const uniqueCatNames = Array.from(new Set(loadedProducts.map((p: any) => p.category || p.category_id).filter(Boolean)));
-          loadedCats = uniqueCatNames.map((name, index) => ({
-            id: name,
-            name: name,
-            sort_order: index
-          }));
-        }
-
-        setCategories(loadedCats);
+        // Recuperiamo le categorie esattamente come fa la dashboard (dalla colonna custom_categories del ristorante)
+        const catList = restData?.custom_categories || ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
+        setCategories(catList);
 
         if (promoRes.status === 'fulfilled' && promoRes.value.data) {
           setPromotions(promoRes.value.data);
@@ -265,13 +253,17 @@ function PublicPageContent() {
           </div>
         ) : activeTab === 'order' ? (
           <div className="space-y-6">
-            {categories.map((cat) => {
-              const catProducts = products.filter((p) => String(p.category_id) === String(cat.id) || p.category === cat.name || p.category_id === cat.name);
+            {categories.map((catName) => {
+              // Confronto flessibile (ignorando maiuscole/minuscole e spazi)
+              const catProducts = products.filter((p) => 
+                p.category && p.category.trim().toLowerCase() === catName.trim().toLowerCase()
+              );
+              
               if (catProducts.length === 0) return null;
 
               return (
-                <div key={cat.id} className="space-y-3">
-                  <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
+                <div key={catName} className="space-y-3">
+                  <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{catName}</h2>
                   <div className="space-y-2">
                     {catProducts.map((product) => (
                       <div key={product.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
@@ -299,6 +291,39 @@ function PublicPageContent() {
                 </div>
               );
             })}
+
+            {/* Prodotti senza categoria o con categoria non censita */}
+            {products.filter((product) => !product.category || !categories.some((catName) => catName.trim().toLowerCase() === product.category.trim().toLowerCase())).length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">Altro</h2>
+                <div className="space-y-2">
+                  {products
+                    .filter((product) => !product.category || !categories.some((catName) => catName.trim().toLowerCase() === product.category.trim().toLowerCase()))
+                    .map((product) => (
+                      <div key={product.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
+                        <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
+                          {product.image_url ? (
+                            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
+                          )}
+                        </div>
+                        <div className="space-y-0.5 flex-1">
+                          <h3 className="font-bold text-xs text-white">{product.name}</h3>
+                          {product.description && <p className="text-[11px] text-slate-400">{product.description}</p>}
+                          <span className="font-mono text-amber-400 font-bold text-xs">€{Number(product.price).toFixed(2)}</span>
+                        </div>
+                        <button
+                          onClick={() => addToCart(product)}
+                          className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                        >
+                          Aggiungi
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
 
             {/* Prodotti senza categoria */}
             {products.filter((product) => !categories.some((cat) => String(product.category_id) === String(cat.id) || product.category === cat.name || product.category_id === cat.name)).length > 0 && (
