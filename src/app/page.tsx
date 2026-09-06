@@ -67,7 +67,6 @@ function PublicPageContent() {
           restData = restRes.value.data;
           setRestaurant(restData);
           
-          // Imposta di default il primo tipo di ordine disponibile se il takeoff è disabilitato
           if (restData.allow_takeaway === false && restData.allow_delivery === true) {
             setOrderType('delivery');
           }
@@ -142,7 +141,6 @@ function PublicPageContent() {
     e.preventDefault();
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
     
-    // Validazione orario nel passato per il giorno odierno
     if (orderDate === todayStr && pickupTime < currentTimeStr) {
       alert("Non è possibile selezionare un orario già passato per oggi!");
       return;
@@ -185,7 +183,6 @@ function PublicPageContent() {
       return;
     }
 
-    // Validazione orario nel passato per il giorno odierno
     if (resDate === todayStr && resTime < currentTimeStr) {
       alert("Non è possibile selezionare un orario già passato per oggi!");
       return;
@@ -215,7 +212,6 @@ function PublicPageContent() {
     }
   };
 
-  // Verifica configurazione asporto/consegna (default true se non specificato)
   const allowTakeaway = restaurant?.allow_takeaway ?? true;
   const allowDelivery = restaurant?.allow_delivery ?? true;
 
@@ -225,9 +221,14 @@ function PublicPageContent() {
     <div className="min-h-screen bg-slate-900 text-white pb-24">
       <div className="max-w-xl mx-auto p-4 space-y-6">
         
+        {/* Intestazione e Biografia con whitespace-pre-line per mantenere punteggiatura e a capo */}
         <header className="text-center space-y-2 pt-4">
           <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">{restaurant?.name || 'NOM SUSHI VIBES'}</h1>
-          {restaurant?.description && <p className="text-xs text-slate-400 max-w-sm mx-auto">{restaurant.description}</p>}
+          {restaurant?.description && (
+            <p className="text-xs text-slate-400 max-w-sm mx-auto whitespace-pre-line leading-relaxed">
+              {restaurant.description}
+            </p>
+          )}
         </header>
 
         {promotions.length > 0 && (
@@ -280,6 +281,24 @@ function PublicPageContent() {
           </div>
         ) : activeTab === 'order' ? (
           <div className="space-y-6">
+            
+            {/* Selezione del tipo di ordine PRIMA del menu */}
+            <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center justify-between text-xs">
+              <span className="font-bold text-amber-500 uppercase tracking-wide">Modalità di Ordine:</span>
+              <select
+                value={orderType}
+                onChange={(e) => setOrderType(e.target.value as any)}
+                className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-semibold focus:outline-none focus:border-amber-500"
+              >
+                <option value="takeaway" disabled={!allowTakeaway}>
+                  Ritiro d'asporto {!allowTakeaway ? '(Non disponibile)' : ''}
+                </option>
+                <option value="delivery" disabled={!allowDelivery}>
+                  Consegna a domicilio {!allowDelivery ? '(Non disponibile)' : ''}
+                </option>
+              </select>
+            </div>
+
             {categories.map((catName) => {
               const catProducts = products.filter((p) => 
                 p.category && p.category.trim().toLowerCase() === catName.trim().toLowerCase()
@@ -320,7 +339,7 @@ function PublicPageContent() {
 
             {Object.keys(cart).length > 0 && (
               <form onSubmit={handleSendOrder} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
-                <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine</h3>
+                <h3 className="font-bold text-sm text-white border-b border-slate-700 pb-2">Riepilogo Ordine ({orderType === 'takeaway' ? 'Ritiro' : 'Consegna'})</h3>
                 <div className="space-y-2 divide-y divide-slate-700/50">
                   {Object.values(cart).map(({ product, quantity }) => (
                     <div key={product.id} className="pt-2 flex justify-between items-center text-xs">
@@ -371,22 +390,9 @@ function PublicPageContent() {
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
                     required
                   />
-                  
-                  {/* Selezione Tipo Ordine (abilitati/disabilitati in base alle impostazioni) e Data/Ora */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                    <select
-                      value={orderType}
-                      onChange={(e) => setOrderType(e.target.value as any)}
-                      className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
-                    >
-                      <option value="takeaway" disabled={!allowTakeaway}>
-                        Ritiro d'asporto {!allowTakeaway ? '(Non disponibile)' : ''}
-                      </option>
-                      <option value="delivery" disabled={!allowDelivery}>
-                        Consegna a domicilio {!allowDelivery ? '(Non disponibile)' : ''}
-                      </option>
-                    </select>
 
+                  {/* Selezione Data e Ora Ritiro/Consegna nel carrello */}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
                     <input
                       type="date"
                       min={todayStr}
@@ -452,7 +458,6 @@ function PublicPageContent() {
             </div>
             <p className="text-[10px] text-slate-400 italic">Inserisci almeno un recapito tra Telefono ed Email.</p>
 
-            {/* Selezione Data e Ora con blocco date/orari passati */}
             <div className="grid grid-cols-3 gap-2">
               <input
                 type="date"
