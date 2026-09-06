@@ -20,13 +20,14 @@ export default function DashboardPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Stato Modifica/Creazione Prodotto
+  // Form stato nuovo/modifica prodotto
   const [editingId, setEditingId] = useState<string | null>(null);
   const [prodName, setProdName] = useState('');
   const [prodDesc, setProdDesc] = useState('');
   const [prodPrice, setProdPrice] = useState('');
   const [prodCategory, setProdCategory] = useState('Antipasti');
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const router = useRouter();
@@ -61,7 +62,6 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchRestaurantAndProducts(); }, []);
 
-  // Reset del form
   const resetForm = () => {
     setEditingId(null);
     setProdName('');
@@ -69,18 +69,27 @@ export default function DashboardPage() {
     setProdPrice('');
     setProdCategory('Antipasti');
     setImageFile(null);
+    setImagePreview(null);
   };
 
-  // Carica il form con i dati per la modifica
   const handleEditClick = (p: Product) => {
     setEditingId(p.id);
     setProdName(p.name);
     setProdDesc(p.description || '');
     setProdPrice(p.price.toString());
     setProdCategory(p.category || 'Antipasti');
+    setImagePreview(p.image_url);
+    setImageFile(null);
   };
 
-  // Upload Immagine su Supabase Storage
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file)); // Anteprima istantanea
+    }
+  };
+
   const uploadImage = async (file: File) => {
     const fileExt = file.name.split('.').pop();
     const fileName = `${restaurant.id}/${Date.now()}.${fileExt}`;
@@ -90,7 +99,7 @@ export default function DashboardPage() {
       .upload(fileName, file, { upsert: true });
 
     if (uploadError) {
-      console.error('Errore upload:', uploadError);
+      console.error('Errore upload immagine:', uploadError);
       return null;
     }
 
@@ -98,15 +107,16 @@ export default function DashboardPage() {
     return data.publicUrl;
   };
 
-  // Salva o Aggiorna Prodotto
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prodName || !prodPrice) return;
     setSaving(true);
 
-    let imageUrl = null;
+    let imageUrl = imagePreview;
+
     if (imageFile) {
-      imageUrl = await uploadImage(imageFile);
+      const uploadedUrl = await uploadImage(imageFile);
+      if (uploadedUrl) imageUrl = uploadedUrl;
     }
 
     const payload: any = {
@@ -115,17 +125,14 @@ export default function DashboardPage() {
       description: prodDesc,
       price: parseFloat(prodPrice),
       category: prodCategory,
+      image_url: imageUrl,
     };
-
-    if (imageUrl) payload.image_url = imageUrl;
 
     let error;
     if (editingId) {
-      // Modifica
       const res = await supabase.from('products').update(payload).eq('id', editingId);
       error = res.error;
     } else {
-      // Inserimento
       const res = await supabase.from('products').insert([payload]);
       error = res.error;
     }
@@ -139,7 +146,6 @@ export default function DashboardPage() {
     setSaving(false);
   };
 
-  // Toggle Disponibilità
   const toggleAvailability = async (p: Product) => {
     const { error } = await supabase
       .from('products')
@@ -151,9 +157,8 @@ export default function DashboardPage() {
     }
   };
 
-  // Elimina Prodotto
   const handleDeleteProduct = async (id: string) => {
-    if (!confirm('Eliminare questo piatto?')) return;
+    if (!confirm('Eliminare questo piatto dal menu?')) return;
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (!error) {
       setProducts(products.filter((p) => p.id !== id));
@@ -171,7 +176,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* Header Dashboard */}
+        {/* Header */}
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-6 rounded-xl border border-slate-700 gap-4">
           <div>
             <span className="text-xs text-amber-500 font-semibold uppercase tracking-wider">Locale Attivo</span>
@@ -191,7 +196,7 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {/* Form Creazione/Modifica Piatto */}
+        {/* Form Gestore con Anteprima Immagine */}
         <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-bold">{editingId ? 'Modifica Piatto' : 'Aggiungi un Nuovo Piatto'}</h2>
@@ -244,14 +249,22 @@ export default function DashboardPage() {
             />
 
             <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="w-full">
-                <label className="block text-xs text-slate-400 mb-1">Immagine Piatto (opzionale)</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                  className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-700 file:text-white"
-                />
+              <div className="w-full flex items-center gap-3">
+                {imagePreview ? (
+                  <img src={imagePreview} alt="Anteprima" className="w-14 h-14 rounded-lg object-cover border border-amber-500/50" />
+                ) : (
+                  <div className="w-14 h-14 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500 text-center p-1">No Anteprima</div>
+                )}
+                
+                <div className="flex-1">
+                  <label className="block text-xs text-slate-400 mb-1">Carica Immagine Piatto</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-700 file:text-white"
+                  />
+                </div>
               </div>
 
               <button
@@ -265,7 +278,7 @@ export default function DashboardPage() {
           </form>
         </section>
 
-        {/* Lista Piatti */}
+        {/* Lista Piatti Gestore */}
         <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
           <h2 className="text-lg font-bold">Menu del Locale ({products.length} piatti)</h2>
 
@@ -297,7 +310,7 @@ export default function DashboardPage() {
                       onClick={() => toggleAvailability(item)}
                       className={`text-xs px-2 py-1 rounded font-semibold transition-colors ${item.is_available ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}
                     >
-                      {item.is_available ? 'Disponibile' : 'Esaurito'}
+                      {item.is_available ? 'In Menu' : 'Nascosto in IU'}
                     </button>
 
                     <button onClick={() => handleEditClick(item)} className="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Modifica</button>

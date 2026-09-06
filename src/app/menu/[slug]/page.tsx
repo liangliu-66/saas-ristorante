@@ -46,6 +46,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
     if (!slug) return;
 
     const fetchMenu = async () => {
+      // Recupero dati ristorante aggiornati dal DB
       const { data: restData } = await supabase
         .from('restaurants')
         .select('*')
@@ -56,6 +57,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
         setRestaurant(restData);
         if (restData.allow_delivery) setOrderType('delivery');
 
+        // Mostra SOLO i piatti con is_available = true (quelli esauriti o rimossi vengono esclusi)
         const { data: prodData } = await supabase
           .from('products')
           .select('*')
@@ -70,7 +72,6 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
     fetchMenu();
   }, [slug]);
 
-  // Gestione Carrello
   const addToCart = (product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
@@ -94,24 +95,18 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
   const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Validazione Telefono: Solo cifre e il + iniziale
   const handlePhoneChange = (val: string) => {
     const cleanVal = val.replace(/[^0-9+]/g, '');
     setCustomerPhone(cleanVal);
   };
 
-  // Invio Ordine in Batch
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName || !customerPhone || cart.length === 0) return;
     setSendingOrder(true);
 
-    const deliveryFee = orderType === 'delivery' ? (restaurant.delivery_fee || 0) : 0;
-    const finalPrice = totalAmount + deliveryFee;
-
-    // 1. Inserimento Ordine Principale
-    const { data: orderData, error: orderError } = await supabase
-      .from('reservations') // Usiamo la tabella ordini/prenotazioni
+    const { error: orderError } = await supabase
+      .from('reservations')
       .insert([
         {
           restaurant_id: restaurant.id,
@@ -123,9 +118,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
           reservation_date: new Date().toISOString().split('T')[0],
           reservation_time: new Date().toTimeString().split(' ')[0],
         },
-      ])
-      .select()
-      .single();
+      ]);
 
     if (!orderError) {
       setOrderSuccess(true);
@@ -154,14 +147,16 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
 
   return (
     <div className="min-h-screen bg-slate-900 text-white pb-28">
-      {/* Header Ristorante */}
+      {/* Header Ristorante Dinamico dal DB */}
       <header className="bg-slate-800 p-6 border-b border-slate-700 text-center space-y-2">
         <h1 className="text-3xl font-bold text-amber-500">{restaurant.name}</h1>
         {restaurant.description && <p className="text-slate-400 text-sm">{restaurant.description}</p>}
         
-        <div className="flex justify-center gap-4 text-xs text-slate-400 pt-2">
-          {restaurant.opening_hours?.text && <span>🕒 Orari: {restaurant.opening_hours.text}</span>}
-        </div>
+        {restaurant.opening_hours?.text && (
+          <div className="text-xs text-slate-400 pt-1">
+            🕒 Orari: {restaurant.opening_hours.text}
+          </div>
+        )}
       </header>
 
       {/* Lista Prodotti */}
@@ -173,9 +168,12 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
             const inCart = cart.find((c) => c.id === item.id);
             return (
               <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center gap-4">
-                {item.image_url && (
+                {item.image_url ? (
                   <img src={item.image_url} alt={item.name} className="w-16 h-16 rounded-lg object-cover bg-slate-900" />
+                ) : (
+                  <div className="w-16 h-16 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500">No Img</div>
                 )}
+                
                 <div className="flex-1">
                   <h3 className="font-bold text-sm">{item.name}</h3>
                   <p className="text-xs text-slate-400">{item.description}</p>
@@ -201,7 +199,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
         )}
       </main>
 
-      {/* Bar del Carrello Floating in Basso */}
+      {/* Floating Cart Bar */}
       {totalItems > 0 && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-900/95 border-t border-slate-800 backdrop-blur-md">
           <div className="max-w-md mx-auto flex items-center justify-between bg-amber-500 p-3 rounded-xl text-slate-900">
@@ -219,7 +217,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
         </div>
       )}
 
-      {/* Modale Checkout */}
+      {/* Modal Checkout */}
       {isCheckoutOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
           <div className="bg-slate-800 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
@@ -236,7 +234,6 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
               </div>
             ) : (
               <form onSubmit={handleSendOrder} className="space-y-4">
-                {/* Articoli */}
                 <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                   {cart.map((c) => (
                     <div key={c.id} className="flex justify-between text-sm py-1 border-b border-slate-700/50">
@@ -246,7 +243,6 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
                   ))}
                 </div>
 
-                {/* Tipo Servizio */}
                 <div className="grid grid-cols-2 gap-2 pt-2">
                   {restaurant.allow_takeaway && (
                     <button
@@ -268,7 +264,6 @@ export default function PublicMenuPage({ params }: { params: Promise<{ slug: str
                   )}
                 </div>
 
-                {/* Dati Cliente */}
                 <div className="space-y-3">
                   <input
                     type="text"
