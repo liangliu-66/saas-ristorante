@@ -97,7 +97,7 @@ export default function MenuPage() {
         setIsOwnerView(false);
         await fetchPublicData(restData.id);
 
-        // Imposta il primo orario disponibile come default se esiste
+        // Imposta il primo orario ordine disponibile come default se esiste
         if (restData.order_time_slots && restData.order_time_slots.length > 0) {
           setPickupTime(restData.order_time_slots[0]);
         }
@@ -151,9 +151,18 @@ export default function MenuPage() {
     if (prodData) setProducts(prodData);
   };
 
-  // Generatore di slot orari basato esclusivamente sulle impostazioni del database
+  // Generatore di slot orari per Ordini (Asporto / Delivery) dal database
   const getAvailableTimeSlots = () => {
     const customSlots = restaurant?.order_time_slots;
+    if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
+      return customSlots.sort();
+    }
+    return [];
+  };
+
+  // Generatore di slot orari per Prenotazioni Tavoli dal database
+  const getAvailableReservationTimeSlots = () => {
+    const customSlots = restaurant?.reservation_time_slots;
     if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
       return customSlots.sort();
     }
@@ -233,7 +242,7 @@ export default function MenuPage() {
             type: 'order',
             restaurantName: restaurant?.name,
             totalAmount: totalAmount,
-            items: cart, // Passa correttamente l'array dei prodotti all'API
+            items: cart,
           }),
         });
       } catch (err) {
@@ -526,7 +535,7 @@ export default function MenuPage() {
                   </div>
                 </div>
 
-                {/* TIPO ORDINE + ORARIO SELEZIONABILE DALLE IMPOSTAZIONI */}
+                {/* TIPO ORDINE + ORARIO ORDINI */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">Tipo di ordine</label>
