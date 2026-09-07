@@ -170,6 +170,7 @@ export default function LiveDashboardPage() {
         datesSet.add(r.date);
       }
     });
+    // Inserite tutte le date future senza limiti di troncamento
     setPendingFutureDates(Array.from(datesSet).sort());
   };
 
@@ -369,6 +370,7 @@ export default function LiveDashboardPage() {
 
   const renderCard = (item: OrderItem) => {
     const numPeople = item.guests || item.party_size || 1;
+    const createdAtFormatted = item.created_at ? item.created_at.replace('T', ' ').substring(0, 16) : '';
 
     return (
       <div key={item.id} className="bg-slate-900/90 hover:bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md transition-all space-y-3">
@@ -458,7 +460,10 @@ export default function LiveDashboardPage() {
         {item.type === 'order' && item.items && item.items.length > 0 && (
           <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 space-y-1.5">
             <div className="flex justify-between items-center border-b border-slate-800/80 pb-1 text-[11px]">
-              <span className="uppercase tracking-wider text-slate-400 font-bold">Comanda:</span>
+              <div className="flex items-center gap-2">
+                <span className="uppercase tracking-wider text-slate-400 font-bold">Comanda:</span>
+                {createdAtFormatted && <span className="text-amber-400 font-mono font-medium text-[10px]">({createdAtFormatted})</span>}
+              </div>
               {item.total_amount && <span className="font-mono text-emerald-400 font-bold">Totale: €{Number(item.total_amount).toFixed(2)}</span>}
             </div>
             <div className="divide-y divide-slate-800/40">
@@ -613,20 +618,26 @@ export default function LiveDashboardPage() {
           <div className="grid grid-cols-2 sm:flex gap-2 text-xs">
             <button
               onClick={() => setActiveTab('orders')}
-              className={`px-3 sm:px-4 py-2.5 rounded-xl font-bold transition-all text-center ${
+              className={`px-3 sm:px-4 py-2.5 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
                 activeTab === 'orders' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              Ordini ({ordersList.filter(o => o.date === selectedDate).length})
+              <span>Ordini</span>
+              <span className="bg-amber-500/20 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded-full text-[10px] font-mono font-black">
+                {ordersList.filter(o => o.date === selectedDate).length}
+              </span>
             </button>
 
             <button
               onClick={() => setActiveTab('reservations')}
-              className={`px-3 sm:px-4 py-2.5 rounded-xl font-bold transition-all text-center ${
+              className={`px-3 sm:px-4 py-2.5 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
                 activeTab === 'reservations' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              Prenotazioni ({reservationsList.filter(r => r.date === selectedDate).length})
+              <span>Prenotazioni</span>
+              <span className="bg-amber-500/20 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded-full text-[10px] font-mono font-black">
+                {reservationsList.filter(r => r.date === selectedDate).length}
+              </span>
             </button>
           </div>
 
@@ -657,33 +668,48 @@ export default function LiveDashboardPage() {
         <div className="flex overflow-x-auto pb-1 sm:pb-0 gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800 text-xs no-scrollbar">
           <button
             onClick={() => setStatusFilter('all')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'all' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-1.5 ${statusFilter === 'all' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
-            Tutti ({dateFilteredList.length})
+            <span>Tutti</span>
+            <span className="text-[10px] font-mono font-bold bg-slate-900/80 px-1.5 py-0.2 rounded text-slate-300">
+              {dateFilteredList.length}
+            </span>
           </button>
           <button
             onClick={() => setStatusFilter('pending')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'pending' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-1.5 ${statusFilter === 'pending' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
-            Da Confermare ({dateFilteredList.filter(i => i.status === 'pending').length})
+            <span>Da Confermare</span>
+            <span className="text-[10px] font-mono font-bold bg-amber-500/20 text-amber-400 px-1.5 py-0.2 rounded border border-amber-500/30">
+              {dateFilteredList.filter(i => i.status === 'pending').length}
+            </span>
           </button>
           <button
             onClick={() => setStatusFilter('confirmed')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'confirmed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-1.5 ${statusFilter === 'confirmed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
-            In Corso ({dateFilteredList.filter(i => ['confirmed', 'preparing', 'ready'].includes(i.status)).length})
+            <span>In Corso</span>
+            <span className="text-[10px] font-mono font-bold bg-blue-500/20 text-blue-400 px-1.5 py-0.2 rounded border border-blue-500/30">
+              {dateFilteredList.filter(i => ['confirmed', 'preparing', 'ready'].includes(i.status)).length}
+            </span>
           </button>
           <button
             onClick={() => setStatusFilter('completed')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'completed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-1.5 ${statusFilter === 'completed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
-            Completati ({dateFilteredList.filter(i => i.status === 'completed').length})
+            <span>Completati</span>
+            <span className="text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-500/30">
+              {dateFilteredList.filter(i => i.status === 'completed').length}
+            </span>
           </button>
           <button
             onClick={() => setStatusFilter('cancelled')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'cancelled' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-1.5 ${statusFilter === 'cancelled' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
-            Annullati ({dateFilteredList.filter(i => i.status === 'cancelled').length})
+            <span>Annullati</span>
+            <span className="text-[10px] font-mono font-bold bg-red-500/20 text-red-400 px-1.5 py-0.2 rounded border border-red-500/30">
+              {dateFilteredList.filter(i => i.status === 'cancelled').length}
+            </span>
           </button>
         </div>
 
