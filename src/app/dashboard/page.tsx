@@ -46,10 +46,8 @@ export default function LiveDashboardPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Controllo protezione accesso e caricamento dati
   useEffect(() => {
     const init = async () => {
-      // 1. Verifica autenticazione (Blocca l'accesso se non loggato)
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         router.push('/login');
@@ -71,7 +69,6 @@ export default function LiveDashboardPage() {
       await fetchAllData(restData.id);
       setLoading(false);
 
-      // Realtime Ordini
       const ordersChannel = supabase
         .channel('realtime_orders')
         .on(
@@ -103,7 +100,6 @@ export default function LiveDashboardPage() {
         )
         .subscribe();
 
-      // Realtime Prenotazioni
       const reservationsChannel = supabase
         .channel('realtime_reservations')
         .on(
@@ -177,22 +173,21 @@ export default function LiveDashboardPage() {
     }
   };
 
-  const enableAudio = () => {
-    const ctx = getAudioContext();
-    if (ctx) {
-      ctx.resume().then(() => {
+  const toggleAudio = () => {
+    if (!audioEnabled) {
+      const ctx = getAudioContext();
+      if (ctx) {
+        ctx.resume().then(() => {
+          setAudioEnabled(true);
+          playBeep(880, 0.3, 'sine');
+        });
+      } else {
         setAudioEnabled(true);
-        playBeep(880, 0.3, 'sine');
-      });
+      }
     } else {
-      setAudioEnabled(true);
+      setAudioEnabled(false);
+      setIsAlarmPlaying(false);
     }
-  };
-
-  const testSound = () => {
-    enableAudio();
-    playBeep(987.77, 0.2, 'triangle');
-    setTimeout(() => playBeep(1318.51, 0.4, 'triangle'), 200);
   };
 
   const fetchAllData = async (restaurantId: string) => {
@@ -252,25 +247,12 @@ export default function LiveDashboardPage() {
     const { error } = await supabase.from(tableName).update({ status: newStatus }).eq('id', id);
 
     if (!error) {
-      let targetItem: OrderItem | undefined;
-
       if (type === 'order') {
-        setOrdersList((prev) => {
-          const nextList = prev.map((o) => {
-            if (o.id === id) {
-              targetItem = { ...o, status: newStatus };
-              return targetItem;
-            }
-            return o;
-          });
-          return nextList;
-        });
+        setOrdersList((prev) => prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o)));
       } else {
         setReservationsList((prev) => prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r)));
       }
 
-      // <--- INCOLLA QUI IL FETCH PER L'API --->
-      // Trova l'elemento corrente (sia esso ordine o prenotazione) per recuperarne i dati
       const currentItem = type === 'order' 
         ? ordersList.find(o => o.id === id) 
         : reservationsList.find(r => r.id === id);
@@ -287,14 +269,12 @@ export default function LiveDashboardPage() {
             newStatus: newStatus,
             orderType: currentItem.order_type,
             pickupTime: currentItem.time,
-            type: type, // 'order' oppure 'reservation'
+            type: type,
             restaurantName: restaurant?.name,
             totalAmount: currentItem.total_amount,
           }),
         }).catch((err) => console.error('Errore chiamata API notifiche:', err));
       }
-      // ----------------------------------------
-
     } else {
       alert(`Errore aggiornamento: ${error.message}`);
     }
@@ -309,7 +289,7 @@ export default function LiveDashboardPage() {
     router.push('/login');
   };
 
-  if (loading) return <div className="p-8 text-slate-400 bg-slate-900 min-h-screen text-xs">Caricamento in corso...</div>;
+  if (loading) return <div className="p-8 text-slate-400 bg-slate-950 min-h-screen text-xs">Caricamento in corso...</div>;
 
   const currentRawList = activeTab === 'orders' ? ordersList : reservationsList;
   const dateFilteredList = currentRawList.filter((item) => item.date === selectedDate);
@@ -338,24 +318,24 @@ export default function LiveDashboardPage() {
     const isExpanded = !!expandedCards[item.id];
 
     return (
-      <div key={item.id} className="bg-slate-800/80 p-4 rounded-xl border border-slate-700/80 space-y-3">
+      <div key={item.id} className="bg-slate-900/90 hover:bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md transition-all space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <h3 className="font-bold text-sm text-white">{item.customer_name}</h3>
             
             {item.type === 'reservation' && (
-              <span className="bg-slate-900 text-slate-300 border border-slate-700 px-2.5 py-0.5 rounded-md text-[11px] font-medium">
+              <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2.5 py-0.5 rounded-md text-[11px] font-medium">
                 {numPeople} {numPeople === 1 ? 'persona' : 'persone'}
               </span>
             )}
 
             {item.type === 'order' && (
-              <span className="bg-slate-900 text-slate-300 border border-slate-700 px-2 py-0.5 rounded-md text-[11px] font-medium uppercase tracking-wider">
+              <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded-md text-[11px] font-medium uppercase tracking-wider">
                 {item.order_type === 'delivery' ? 'Consegna' : 'Ritiro'}
               </span>
             )}
 
-            <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold">
+            <span className="bg-slate-800 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold">
               {item.time}
             </span>
           </div>
@@ -364,25 +344,25 @@ export default function LiveDashboardPage() {
             <span className="text-[11px] text-slate-400">{item.date}</span>
             {item.status === 'pending' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[11px] font-semibold animate-pulse">Da Confermare</span>}
             {item.status === 'confirmed' && <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Confermato</span>}
-            {item.status === 'preparing' && <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">In Cucinazione</span>}
+            {item.status === 'preparing' && <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">In Cucina</span>}
             {item.status === 'ready' && <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Pronto</span>}
-            {item.status === 'completed' && <span className="bg-slate-700/60 text-slate-300 border border-slate-600 px-2 py-0.5 rounded text-[11px] font-semibold">Completato</span>}
+            {item.status === 'completed' && <span className="bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold">Completato</span>}
             {item.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Annullato</span>}
           </div>
         </div>
 
         {item.type === 'order' && item.items && item.items.length > 0 && (
-          <div className="bg-slate-900/90 p-3 rounded-lg border border-slate-700/60 space-y-1.5">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-1 text-[11px]">
+          <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 space-y-1.5">
+            <div className="flex justify-between items-center border-b border-slate-800/80 pb-1 text-[11px]">
               <span className="uppercase tracking-wider text-slate-400 font-bold">Comanda:</span>
               {item.total_amount && <span className="font-mono text-emerald-400 font-bold">Totale: €{Number(item.total_amount).toFixed(2)}</span>}
             </div>
-            <div className="divide-y divide-slate-800/60">
+            <div className="divide-y divide-slate-800/40">
               {item.items.map((it, idx) => (
                 <div key={idx} className="py-1 text-xs flex justify-between items-start">
                   <div>
                     <span className="font-semibold text-white">{it.quantity}x {it.name}</span>
-                    {it.itemNote && <span className="text-slate-400 text-[11px] block italic">Note: {it.itemNote}</span>}
+                    {it.itemNote && <span className="text-slate-300 text-[11px] block italic">Note: {it.itemNote}</span>}
                   </div>
                   {it.price && <span className="text-slate-400 font-mono text-[11px]">€{(it.price * it.quantity).toFixed(2)}</span>}
                 </div>
@@ -392,14 +372,14 @@ export default function LiveDashboardPage() {
         )}
 
         {isExpanded && (
-          <div className="space-y-2 pt-2 border-t border-slate-700/60 transition-all">
+          <div className="space-y-2 pt-2 border-t border-slate-800 transition-all">
             <div className="text-xs text-slate-300 font-mono flex flex-wrap items-center gap-4">
               <span>Tel: {item.customer_phone || 'N/D'}</span>
               {item.customer_email && <span>Email: {item.customer_email}</span>}
             </div>
 
             {item.notes ? (
-              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-700/40 text-xs text-slate-300">
+              <div className="bg-slate-950/40 p-2.5 rounded-lg border border-slate-800 text-xs text-slate-300">
                 <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note:</span>
                 <p className="whitespace-pre-line leading-snug">{item.notes}</p>
               </div>
@@ -409,17 +389,17 @@ export default function LiveDashboardPage() {
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-1 border-t border-slate-700/40">
+        <div className="flex items-center justify-between pt-1 border-t border-slate-800">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 font-medium">Stato:</span>
             <select
               value={item.status}
               onChange={(e) => handleStatusChange(item.id, item.type, e.target.value as OrderItem['status'])}
-              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-medium focus:outline-none focus:border-amber-500 cursor-pointer"
+              className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-medium focus:outline-none focus:border-slate-500 cursor-pointer"
             >
               <option value="pending">Da Confermare</option>
               <option value="confirmed">Confermato</option>
-              {item.type === 'order' && <option value="preparing">In Cucinazione</option>}
+              {item.type === 'order' && <option value="preparing">In Cucina</option>}
               {item.type === 'order' && <option value="ready">Pronto</option>}
               <option value="completed">Completato</option>
               <option value="cancelled">Annullato</option>
@@ -428,7 +408,7 @@ export default function LiveDashboardPage() {
 
           <button
             onClick={() => toggleExpand(item.id)}
-            className="bg-slate-700/70 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
+            className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors border border-slate-700"
           >
             {isExpanded ? 'Comprimi' : 'Dettagli'}
           </button>
@@ -438,82 +418,89 @@ export default function LiveDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6">
-      <div className="max-w-5xl mx-auto space-y-5">
-        
-        {/* Banner Allarme Attivo */}
-        {isAlarmPlaying && (
-          <div className="bg-amber-500 text-slate-900 font-black p-3 rounded-xl shadow-lg animate-pulse flex justify-between items-center text-xs">
-            <span>ORDINI IN ATTESA DI CONFERMA!</span>
-            <button onClick={() => setIsAlarmPlaying(false)} className="bg-slate-900 text-white px-2.5 py-1 rounded text-[11px]">Silenzia Audio</button>
-          </div>
-        )}
-
-        {/* Header Gestore */}
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-4 sm:p-5 rounded-xl border border-slate-700 gap-3">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col md:flex-row">
+      
+      {/* SIDEBAR LATERALE */}
+      <aside className="w-full md:w-64 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 p-5 flex flex-col justify-between shrink-0">
+        <div className="space-y-6">
           <div>
-            <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Pannello Live</span>
-            <h1 className="text-xl font-black">{restaurant?.name}</h1>
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">Dashboard Live</span>
+            <h1 className="text-lg font-black tracking-tight text-white mt-0.5 truncate">{restaurant?.name}</h1>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs w-full sm:w-auto">
-            <button
-              onClick={enableAudio}
-              className={`px-3 py-2 rounded-lg font-bold border transition ${
-                audioEnabled ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse'
-              }`}
+          <nav className="space-y-2 text-xs font-semibold">
+            <Link 
+              href={restaurant?.slug ? `/menu/${restaurant.slug}` : '/dashboard/menu'} 
+              target="_blank"
+              className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
             >
-              {audioEnabled ? 'Audio Attivo' : 'Attiva Audio'}
-            </button>
-
-            <button
-              onClick={testSound}
-              className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 rounded-lg font-semibold border border-slate-600 transition"
-            >
-              Test Audio
-            </button>
+              <span>Visualizza Menu Pubblico</span>
+            </Link>
 
             <Link 
               href="/dashboard/promotions" 
-              className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold px-3 py-2 rounded-lg transition-colors flex items-center gap-1"
+              className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
             >
-              Promozioni
+              <span>Gestione Promozioni</span>
             </Link>
 
-            {/* TASTO MENU AGGANCIATO CORRETTAMENTE ALLO SLUG */}
             <Link 
-              href={restaurant?.slug ? `/menu/${restaurant.slug}` : '/dashboard/menu'} 
-              className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-3 py-2 rounded-lg transition-colors"
+              href="/dashboard/settings" 
+              className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
             >
-              Menu
+              <span>Impostazioni Ristorante</span>
             </Link>
-            
-            <Link href="/dashboard/settings" className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-3 py-2 rounded-lg transition-colors">
-              Impostazioni
-            </Link>
-            
-            <button onClick={handleLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold px-3 py-2 rounded-lg border border-red-500/20 transition-colors">
-              Esci
-            </button>
-          </div>
-        </header>
+          </nav>
+        </div>
 
-        {/* Selezione Data e Tabs */}
-        <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-3 pt-6 border-t border-slate-800 text-xs">
+          <button
+            onClick={toggleAudio}
+            className={`w-full py-2.5 px-3 rounded-xl font-bold border transition text-center ${
+              audioEnabled 
+                ? 'bg-slate-800 text-emerald-400 border-slate-700 hover:bg-slate-700' 
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+            }`}
+          >
+            {audioEnabled ? '🔊 Audio Attivo' : '🔇 Audio Disattivato'}
+          </button>
+
+          <button 
+            onClick={handleLogout} 
+            className="w-full bg-slate-800 hover:bg-slate-700 text-red-400 font-semibold py-2.5 rounded-xl border border-slate-700 transition-colors text-center"
+          >
+            Esci dall'Account
+          </button>
+        </div>
+      </aside>
+
+      {/* CONTENUTO PRINCIPALE */}
+      <main className="flex-1 p-4 sm:p-6 space-y-5 overflow-y-auto">
+        
+        {/* Banner Allarme Attivo */}
+        {isAlarmPlaying && (
+          <div className="bg-amber-500 text-slate-950 font-black p-3.5 rounded-xl shadow-lg animate-pulse flex justify-between items-center text-xs">
+            <span>⚠️ CI SONO ORDINI IN ATTESA DI CONFERMA!</span>
+            <button onClick={() => setIsAlarmPlaying(false)} className="bg-slate-950 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold">Silenzia</button>
+          </div>
+        )}
+
+        {/* Toolbar Superiore: Tabs e Filtro Data */}
+        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex gap-2 text-xs">
             <button
               onClick={() => setActiveTab('orders')}
-              className={`px-4 py-2 rounded-lg font-bold transition-colors ${
-                activeTab === 'orders' ? 'bg-amber-500 text-slate-900' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-700'
+              className={`px-4 py-2.5 rounded-xl font-bold transition-all ${
+                activeTab === 'orders' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              Ordini Ritiro & Delivery ({ordersList.filter(o => o.date === selectedDate).length})
+              Ordini Online ({ordersList.filter(o => o.date === selectedDate).length})
             </button>
 
             <button
               onClick={() => setActiveTab('reservations')}
-              className={`px-4 py-2 rounded-lg font-bold transition-colors ${
-                activeTab === 'reservations' ? 'bg-amber-500 text-slate-900' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-700'
+              className={`px-4 py-2.5 rounded-xl font-bold transition-all ${
+                activeTab === 'reservations' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
               Prenotazioni Tavolo ({reservationsList.filter(r => r.date === selectedDate).length})
@@ -526,12 +513,12 @@ export default function LiveDashboardPage() {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-semibold focus:outline-none focus:border-amber-500"
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-semibold focus:outline-none focus:border-slate-600"
             />
             {selectedDate !== todayDate && (
               <button
                 onClick={() => setSelectedDate(todayDate)}
-                className="bg-slate-700 hover:bg-slate-600 text-xs text-slate-200 px-2.5 py-2 rounded-lg font-medium transition"
+                className="bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 px-3 py-2 rounded-xl font-medium transition border border-slate-700"
               >
                 Oggi
               </button>
@@ -539,35 +526,35 @@ export default function LiveDashboardPage() {
           </div>
         </div>
 
-        {/* Filtri per Stato */}
-        <div className="flex flex-wrap gap-1.5 bg-slate-800/60 p-2 rounded-xl border border-slate-700/80 text-xs">
+        {/* Filtri Rapidi per Stato */}
+        <div className="flex flex-wrap gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800 text-xs">
           <button
             onClick={() => setStatusFilter('all')}
-            className={`px-3 py-1 rounded-lg font-semibold transition-colors ${statusFilter === 'all' ? 'bg-amber-500 text-slate-900 font-bold' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors ${statusFilter === 'all' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             Tutti ({dateFilteredList.length})
           </button>
           <button
             onClick={() => setStatusFilter('pending')}
-            className={`px-3 py-1 rounded-lg font-semibold transition-colors ${statusFilter === 'pending' ? 'bg-amber-500 text-slate-900 font-bold' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors ${statusFilter === 'pending' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             Da Confermare ({dateFilteredList.filter(i => i.status === 'pending').length})
           </button>
           <button
             onClick={() => setStatusFilter('confirmed')}
-            className={`px-3 py-1 rounded-lg font-semibold transition-colors ${statusFilter === 'confirmed' ? 'bg-amber-500 text-slate-900 font-bold' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors ${statusFilter === 'confirmed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
-            Confermati ({dateFilteredList.filter(i => ['confirmed', 'preparing', 'ready'].includes(i.status)).length})
+            In Corso ({dateFilteredList.filter(i => ['confirmed', 'preparing', 'ready'].includes(i.status)).length})
           </button>
           <button
             onClick={() => setStatusFilter('completed')}
-            className={`px-3 py-1 rounded-lg font-semibold transition-colors ${statusFilter === 'completed' ? 'bg-amber-500 text-slate-900 font-bold' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors ${statusFilter === 'completed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             Completati ({dateFilteredList.filter(i => i.status === 'completed').length})
           </button>
           <button
             onClick={() => setStatusFilter('cancelled')}
-            className={`px-3 py-1 rounded-lg font-semibold transition-colors ${statusFilter === 'cancelled' ? 'bg-amber-500 text-slate-900 font-bold' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors ${statusFilter === 'cancelled' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             Annullati ({dateFilteredList.filter(i => i.status === 'cancelled').length})
           </button>
@@ -575,18 +562,18 @@ export default function LiveDashboardPage() {
 
         {/* Elenco Sezionato Pranzo / Cena */}
         {finalFilteredList.length === 0 ? (
-          <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 text-center text-slate-400 text-xs">
+          <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center text-slate-400 text-xs">
             Nessun elemento registrato per la data del {selectedDate}.
           </div>
         ) : (
           <div className="space-y-6">
             {lunchList.length > 0 && (
               <section className="space-y-3">
-                <div className="flex items-center gap-2 border-b border-slate-800 pb-1">
-                  <span className="text-amber-500 font-extrabold text-xs uppercase tracking-wider">Pranzo</span>
-                  <span className="text-xs text-slate-400">({lunchList.length})</span>
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-1.5">
+                  <span className="text-slate-300 font-extrabold text-xs uppercase tracking-wider">Pranzo</span>
+                  <span className="text-xs text-slate-500 font-medium">({lunchList.length})</span>
                 </div>
-                <div className="space-y-3">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                   {lunchList.map(renderCard)}
                 </div>
               </section>
@@ -594,11 +581,11 @@ export default function LiveDashboardPage() {
 
             {dinnerList.length > 0 && (
               <section className="space-y-3 pt-2">
-                <div className="flex items-center gap-2 border-b border-slate-800 pb-1">
-                  <span className="text-amber-500 font-extrabold text-xs uppercase tracking-wider">Cena</span>
-                  <span className="text-xs text-slate-400">({dinnerList.length})</span>
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-1.5">
+                  <span className="text-slate-300 font-extrabold text-xs uppercase tracking-wider">Cena</span>
+                  <span className="text-xs text-slate-500 font-medium">({dinnerList.length})</span>
                 </div>
-                <div className="space-y-3">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                   {dinnerList.map(renderCard)}
                 </div>
               </section>
@@ -606,7 +593,7 @@ export default function LiveDashboardPage() {
           </div>
         )}
 
-      </div>
+      </main>
     </div>
   );
 }
