@@ -158,14 +158,6 @@ export default function MenuPage() {
     return [];
   };
 
-  const getAvailableReservationTimeSlots = () => {
-    const customSlots = restaurant?.reservation_time_slots;
-    if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
-      return customSlots.sort();
-    }
-    return [];
-  };
-
   const addToCart = (product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
@@ -593,17 +585,19 @@ export default function MenuPage() {
 
   // --- VISTA GESTIONE MENU (ADMIN) ---
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-4xl mx-auto space-y-8">
-        <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+    <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6">
+      <div className="max-w-4xl mx-auto space-y-6">
+        
+        {/* Header con pulsante di ritorno uniformato */}
+        <header className="flex justify-between items-center bg-slate-800 p-5 rounded-xl border border-slate-700">
           <div>
-            <span className="text-xs text-amber-500 font-bold uppercase">Gestione Carta</span>
-            <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
+            <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Gestione Carta</span>
+            <h1 className="text-xl font-black">{restaurant?.name}</h1>
           </div>
-          <Link href="/dashboard" className="text-sm bg-slate-800 hover:bg-slate-700 text-amber-500 font-bold px-4 py-2 rounded-xl">
-            ← Torna alla Dashboard
+          <Link href="/dashboard" className="bg-slate-700 hover:bg-slate-600 text-xs text-white font-semibold px-3 py-2 rounded-lg transition-colors">
+            Torna alla Dashboard
           </Link>
-        </div>
+        </header>
 
         <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
           <h2 className="text-sm font-bold text-amber-500">Gestione Categorie Menu</h2>

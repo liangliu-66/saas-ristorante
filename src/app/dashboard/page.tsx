@@ -77,6 +77,7 @@ export default function LiveDashboardPage() {
           { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restData.id}` },
           (payload) => {
             if (payload.eventType === 'INSERT') {
+              // Estraiamo correttamente data e ora da pickup_time (es. "2026-09-08 12:30")
               const rawPickup = payload.new.pickup_time || '';
               const orderDate = rawPickup.includes(' ') ? rawPickup.split(' ')[0] : (payload.new.pickup_date || todayDate);
               const orderTime = rawPickup.includes(' ') ? rawPickup.split(' ')[1] : (rawPickup || '12:00');
@@ -244,6 +245,7 @@ export default function LiveDashboardPage() {
 
     if (ordData) {
       formattedOrders = ordData.map((o) => {
+        // Estraiamo correttamente data e ora dal campo pickup_time ("YYYY-MM-DD HH:mm")
         const rawPickup = o.pickup_time || '';
         const orderDate = rawPickup.includes(' ') ? rawPickup.split(' ')[0] : (o.pickup_date || todayDate);
         const orderTime = rawPickup.includes(' ') ? rawPickup.split(' ')[1] : (rawPickup || '12:00');
@@ -289,11 +291,6 @@ export default function LiveDashboardPage() {
   }, [isAlarmPlaying, audioEnabled]);
 
   const handleStatusChange = async (id: string, type: 'order' | 'reservation', newStatus: OrderItem['status']) => {
-    if (newStatus === 'cancelled') {
-      const confirmCancel = window.confirm('Sei sicuro di voler annullare questo elemento?');
-      if (!confirmCancel) return;
-    }
-
     const tableName = type === 'order' ? 'orders' : 'reservations';
     const { error } = await supabase.from(tableName).update({ status: newStatus }).eq('id', id);
 
@@ -401,38 +398,32 @@ export default function LiveDashboardPage() {
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              onClick={() => handleStatusChange(item.id, item.type, 'confirmed')}
-              className={`text-[11px] font-bold px-3 py-1 rounded-lg transition border ${
-                item.status === 'confirmed' 
-                  ? 'bg-blue-600 text-white border-blue-500 shadow' 
-                  : 'bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-blue-500/30'
-              }`}
-            >
-              Conferma
-            </button>
+            {item.status !== 'confirmed' && item.status !== 'completed' && item.status !== 'cancelled' && (
+              <button
+                onClick={() => handleStatusChange(item.id, item.type, 'confirmed')}
+                className="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-[11px] font-bold px-3 py-1 rounded-lg transition"
+              >
+                Conferma
+              </button>
+            )}
 
-            <button
-              onClick={() => handleStatusChange(item.id, item.type, 'completed')}
-              className={`text-[11px] font-bold px-3 py-1 rounded-lg transition border ${
-                item.status === 'completed' 
-                  ? 'bg-emerald-600 text-white border-emerald-500 shadow' 
-                  : 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border-emerald-500/30'
-              }`}
-            >
-              Completato
-            </button>
+            {item.status !== 'completed' && (
+              <button
+                onClick={() => handleStatusChange(item.id, item.type, 'completed')}
+                className="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 text-[11px] font-bold px-3 py-1 rounded-lg transition"
+              >
+                Completato
+              </button>
+            )}
 
-            <button
-              onClick={() => handleStatusChange(item.id, item.type, 'cancelled')}
-              className={`text-[11px] font-bold px-3 py-1 rounded-lg transition border ${
-                item.status === 'cancelled' 
-                  ? 'bg-red-600 text-white border-red-500 shadow' 
-                  : 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border-red-500/30'
-              }`}
-            >
-              Annulla
-            </button>
+            {item.status !== 'cancelled' && (
+              <button
+                onClick={() => handleStatusChange(item.id, item.type, 'cancelled')}
+                className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-[11px] font-bold px-3 py-1 rounded-lg transition"
+              >
+                Annulla
+              </button>
+            )}
           </div>
         </div>
 

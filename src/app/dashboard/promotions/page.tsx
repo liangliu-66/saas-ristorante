@@ -93,7 +93,7 @@ export default function PromotionsPage() {
     <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* Header */}
+        {/* Header con pulsante di ritorno uniformato */}
         <header className="flex justify-between items-center bg-slate-800 p-5 rounded-xl border border-slate-700">
           <div>
             <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Gestione Offerte</span>

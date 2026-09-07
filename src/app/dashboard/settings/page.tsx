@@ -108,14 +108,22 @@ export default function SettingsPage() {
     setSaving(false);
   };
 
-  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen">Caricamento...</div>;
+  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen text-xs">Caricamento...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
+    <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6">
       <div className="max-w-2xl mx-auto space-y-6">
-        <Link href="/dashboard" className="text-sm text-amber-500 font-bold hover:underline">← Torna alla Dashboard Live</Link>
         
-        <h1 className="text-2xl font-bold">Impostazioni Locale & Gestione Orari</h1>
+        {/* Header con pulsante di ritorno uniformato */}
+        <header className="flex justify-between items-center bg-slate-800 p-5 rounded-xl border border-slate-700">
+          <div>
+            <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Configurazione</span>
+            <h1 className="text-xl font-black">Impostazioni Locale & Gestione Orari</h1>
+          </div>
+          <Link href="/dashboard" className="bg-slate-700 hover:bg-slate-600 text-xs text-white font-semibold px-3 py-2 rounded-lg transition-colors">
+            Torna alla Dashboard
+          </Link>
+        </header>
 
         {message && (
           <div className="bg-slate-800 border border-amber-500/50 text-amber-400 p-3 rounded-lg text-xs">
@@ -206,39 +214,39 @@ export default function SettingsPage() {
           </section>
 
           <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-  <h2 className="text-base font-bold text-amber-500">Servizi</h2>
-  <div className="space-y-3">
-    <label className="flex items-center gap-3 cursor-pointer">
-      <input 
-        type="checkbox" 
-        checked={allowTakeaway} 
-        onChange={(e) => setAllowTakeaway(e.target.checked)} 
-        className="w-4 h-4 accent-amber-500 cursor-pointer" 
-      />
-      <span className="text-xs font-semibold">Abilita Ritiro</span>
-    </label>
+            <h2 className="text-base font-bold text-amber-500">Servizi</h2>
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={allowTakeaway} 
+                  onChange={(e) => setAllowTakeaway(e.target.checked)} 
+                  className="w-4 h-4 accent-amber-500 cursor-pointer" 
+                />
+                <span className="text-xs font-semibold">Abilita Ritiro</span>
+              </label>
 
-    <label className="flex items-center gap-3 cursor-pointer">
-      <input 
-        type="checkbox" 
-        checked={allowDelivery} 
-        onChange={(e) => setAllowDelivery(e.target.checked)} 
-        className="w-4 h-4 accent-amber-500 cursor-pointer" 
-      />
-      <span className="text-xs font-semibold">Abilita Consegna</span>
-    </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={allowDelivery} 
+                  onChange={(e) => setAllowDelivery(e.target.checked)} 
+                  className="w-4 h-4 accent-amber-500 cursor-pointer" 
+                />
+                <span className="text-xs font-semibold">Abilita Consegna</span>
+              </label>
 
-    <label className="flex items-center gap-3 cursor-pointer">
-      <input 
-        type="checkbox" 
-        checked={allowReservations} 
-        onChange={(e) => setAllowReservations(e.target.checked)} 
-        className="w-4 h-4 accent-amber-500 cursor-pointer" 
-      />
-      <span className="text-xs font-semibold">Abilita Prenotazione Tavoli</span>
-    </label>
-  </div>
-</section>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={allowReservations} 
+                  onChange={(e) => setAllowReservations(e.target.checked)} 
+                  className="w-4 h-4 accent-amber-500 cursor-pointer" 
+                />
+                <span className="text-xs font-semibold">Abilita Prenotazione Tavoli</span>
+              </label>
+            </div>
+          </section>
 
           <button
             type="submit"
