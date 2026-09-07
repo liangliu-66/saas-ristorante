@@ -34,9 +34,7 @@ export default function LiveDashboardPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
   const [selectedDate, setSelectedDate] = useState<string>(todayDate);
   
-  // Memorizza solo le date future che hanno elementi PENDING (da confermare)
   const [pendingFutureDates, setPendingFutureDates] = useState<string[]>([]);
-  
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const [audioEnabled, setAudioEnabled] = useState(false);
@@ -79,12 +77,18 @@ export default function LiveDashboardPage() {
           { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restData.id}` },
           (payload) => {
             if (payload.eventType === 'INSERT') {
+              // Estraiamo correttamente data e ora da pickup_time (es. "2026-09-08 12:30")
+              const rawPickup = payload.new.pickup_time || '';
+              const orderDate = rawPickup.includes(' ') ? rawPickup.split(' ')[0] : (payload.new.pickup_date || todayDate);
+              const orderTime = rawPickup.includes(' ') ? rawPickup.split(' ')[1] : (rawPickup || '12:00');
+
               const newOrd: OrderItem = { 
                 ...payload.new as any, 
-                date: payload.new.pickup_date, 
-                time: payload.new.pickup_time || '12:00', 
+                date: orderDate, 
+                time: orderTime, 
                 type: 'order' 
               };
+
               setOrdersList((prev) => {
                 const updated = [...prev, newOrd].sort((a, b) => (a.time > b.time ? 1 : -1));
                 updatePendingFutureCheck(updated, reservationsList);
@@ -96,7 +100,11 @@ export default function LiveDashboardPage() {
               }
             } else if (payload.eventType === 'UPDATE') {
               setOrdersList((prev) => {
-                const updated = prev.map((o) => (o.id === payload.new.id ? { ...payload.new as any, date: payload.new.pickup_date, time: payload.new.pickup_time || '12:00', type: 'order' } : o));
+                const rawPickup = payload.new.pickup_time || '';
+                const orderDate = rawPickup.includes(' ') ? rawPickup.split(' ')[0] : (payload.new.pickup_date || todayDate);
+                const orderTime = rawPickup.includes(' ') ? rawPickup.split(' ')[1] : (rawPickup || '12:00');
+
+                const updated = prev.map((o) => (o.id === payload.new.id ? { ...payload.new as any, date: orderDate, time: orderTime, type: 'order' } : o));
                 if (!updated.some((o) => o.status === 'pending' && o.date === todayDate)) {
                   setIsAlarmPlaying(false);
                 }
@@ -151,7 +159,6 @@ export default function LiveDashboardPage() {
     init();
   }, [audioEnabled, router, supabase, todayDate]);
 
-  // Filtra unicamente le date future con stato 'pending'
   const updatePendingFutureCheck = (ords: OrderItem[], resrs: OrderItem[]) => {
     const datesSet = new Set<string>();
     ords.forEach((o) => {
@@ -237,12 +244,19 @@ export default function LiveDashboardPage() {
     let formattedResrs: OrderItem[] = [];
 
     if (ordData) {
-      formattedOrders = ordData.map((o) => ({
-        ...o,
-        date: o.pickup_date,
-        time: o.pickup_time || '12:00',
-        type: 'order' as const,
-      }));
+      formattedOrders = ordData.map((o) => {
+        // Estraiamo correttamente data e ora dal campo pickup_time ("YYYY-MM-DD HH:mm")
+        const rawPickup = o.pickup_time || '';
+        const orderDate = rawPickup.includes(' ') ? rawPickup.split(' ')[0] : (o.pickup_date || todayDate);
+        const orderTime = rawPickup.includes(' ') ? rawPickup.split(' ')[1] : (rawPickup || '12:00');
+
+        return {
+          ...o,
+          date: orderDate,
+          time: orderTime,
+          type: 'order' as const,
+        };
+      });
       setOrdersList(formattedOrders);
 
       if (formattedOrders.some((o) => o.status === 'pending' && o.date === todayDate)) {
@@ -559,7 +573,6 @@ export default function LiveDashboardPage() {
           </div>
         )}
 
-        {/* INDICATORE VISIVO SOLO PER ATTIVITÀ FUTURE IN ATTESA (PENDING) */}
         {pendingFutureDates.length > 0 && (
           <div className="bg-amber-500/10 border border-amber-500/40 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2">
