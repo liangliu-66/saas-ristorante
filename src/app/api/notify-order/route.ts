@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const SENDER_EMAIL = 'NOM SUSHI VIBES <onboarding@resend.dev>'; // Sostituisci con il tuo dominio verificato quando sei pronto
+const SENDER_EMAIL = 'NOM SUSHI VIBES <onboarding@resend.dev>';
 
 export async function POST(request: Request) {
   try {
@@ -12,13 +12,13 @@ export async function POST(request: Request) {
       customerEmail, 
       customerName, 
       newStatus, 
-      type, // 'order' oppure 'reservation'
+      type, 
       restaurantName, 
       totalAmount,
       pickupTime,
       orderType,
-      items, // Array dei piatti ordinati
-      guests // Numero coperti per la prenotazione
+      items, 
+      guests 
     } = body;
 
     if (!customerEmail) {
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
           </div>
         `;
       }
-    }
+    } 
     
     // --- 2. GESTIONE PRENOTAZIONE TAVOLO ---
     else if (type === 'reservation') {
@@ -103,7 +103,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Nessuna azione email richiesta per questo stato.' });
     }
 
-    // Invio tramite Resend
     const data = await resend.emails.send({
       from: SENDER_EMAIL,
       to: [customerEmail],
