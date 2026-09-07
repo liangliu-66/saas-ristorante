@@ -11,9 +11,6 @@ export default function PromotionsPage() {
   const [discounts, setDiscounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Stati per evidenziare le date con ordini/prenotazioni future
-  const [activeDates, setActiveDates] = useState<string[]>([]);
-
   // Form Promozione / Slide
   const [promoTitle, setPromoTitle] = useState('');
   const [promoDesc, setPromoDesc] = useState('');
@@ -43,24 +40,6 @@ export default function PromotionsPage() {
 
     if (promoData) setPromos(promoData);
     if (discData) setDiscounts(discData);
-
-    // Recuperiamo le date future con ordini o prenotazioni per evidenziarle
-    const { data: ordersData } = await supabase.from('orders').select('pickup_time').eq('restaurant_id', restData.id);
-    const { data: resData } = await supabase.from('reservations').select('reservation_date').eq('restaurant_id', restData.id);
-
-    const datesSet = new Set<string>();
-    if (ordersData) {
-      ordersData.forEach((o: any) => {
-        if (o.pickup_time) datesSet.add(o.pickup_time.split(' ')[0]);
-      });
-    }
-    if (resData) {
-      resData.forEach((r: any) => {
-        if (r.reservation_date) datesSet.add(r.reservation_date);
-      });
-    }
-    setActiveDates(Array.from(datesSet));
-
     setLoading(false);
   };
 
@@ -124,20 +103,6 @@ export default function PromotionsPage() {
             Torna alla Dashboard
           </Link>
         </header>
-
-        {/* INDICATORE VISIVO DATE FUTURE CON ORDINI/PRENOTAZIONI */}
-        {activeDates.length > 0 && (
-          <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl text-xs space-y-2">
-            <span className="font-bold text-amber-400 uppercase tracking-wider block">📅 Date con Ordini o Prenotazioni Registrate:</span>
-            <div className="flex flex-wrap gap-2">
-              {activeDates.map((dateStr) => (
-                <span key={dateStr} className="bg-slate-800 border border-amber-500/40 text-amber-300 px-2.5 py-1 rounded-md font-mono font-bold">
-                  {dateStr}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* SEZIONE 1: Slide Bacheca Promozioni */}
         <section className="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-4">

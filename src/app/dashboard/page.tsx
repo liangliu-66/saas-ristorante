@@ -1,44 +1,32 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-interface OrderItem {
-  id: string;
-  customer_name: string;
-  customer_phone: string;
-  customer_email?: string;
-  notes?: string;
-  items?: Array<{ name: string; quantity: number; price?: number; itemNote?: string }>;
-  total_amount?: number;
-  order_type?: 'takeaway' | 'delivery';
-  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
-  guests?: number;
-  party_size?: number;
-  date: string;
-  time: string;
-  created_at: string;
-  type: 'order' | 'reservation';
-}
-
-export default function LiveDashboardPage() {
-  const todayDate = new Date().toISOString().split('T')[0];
-
+export default function SettingsPage() {
   const [restaurant, setRestaurant] = useState<any>(null);
-  const [ordersList, setOrdersList] = useState<OrderItem[]>([]);
-  const [reservationsList, setReservationsList] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'reservations'>('orders');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
-  const [selectedDate, setSelectedDate] = useState<string>(todayDate);
-  
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const [audioEnabled, setAudioEnabled] = useState(false);
-  const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
+  // Stato per le date future con attività registrate
+  const [futureDatesWithActivity, setFutureDatesWithActivity] = useState<string[]>([]);
+
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [allowTakeaway, setAllowTakeaway] = useState(true);
+  const [allowDelivery, setAllowDelivery] = useState(false);
+  const [allowReservations, setAllowReservations] = useState(true);
+  const [deliveryFee, setDeliveryFee] = useState('2.50');
+
+  // Liste orari inseriti uno per uno
+  const [orderSlots, setOrderSlots] = useState<string[]>([]);
+  const [newOrderSlot, setNewOrderSlot] = useState('');
+
+  const [resSlots, setResSlots] = useState<string[]>([]);
+  const [newResSlot, setNewResSlot] = useState('');
 
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -47,587 +35,274 @@ export default function LiveDashboardPage() {
   );
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-        return;
-      }
-
+    const fetchRestaurantAndFutureActivities = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      const { data: restData } = await supabase
+      const { data } = await supabase
         .from('restaurants')
         .select('*')
         .eq('user_id', user.id)
-        .maybeSingle();
+        .single();
 
-      if (!restData) { router.push('/onboarding'); return; }
+      if (data) {
+        setRestaurant(data);
+        setName(data.name || '');
+        setDescription(data.description || '');
+        setAllowTakeaway(data.allow_takeaway ?? true);
+        setAllowDelivery(data.allow_delivery ?? false);
+        setAllowReservations(data.allow_reservations ?? true);
+        setDeliveryFee((data.delivery_fee ?? 2.50).toString());
+        setOrderSlots(data.order_time_slots || ['12:00', '12:30', '13:00', '19:30', '20:00', '20:30']);
+        setResSlots(data.reservation_time_slots || ['12:30', '13:00', '13:30', '20:00', '20:30', '21:00']);
 
-      setRestaurant(restData);
-      await fetchAllData(restData.id);
+        // Controllo ordini e prenotazioni in date future (rispetto a oggi)
+        const todayStr = new Date().toISOString().split('T')[0];
+        const datesSet = new Set<string>();
+
+        const { data: ordersData } = await supabase
+          .from('orders')
+          .select('pickup_time')
+          .eq('restaurant_id', data.id);
+
+        const { data: resData } = await supabase
+          .from('reservations')
+          .select('reservation_date')
+          .eq('restaurant_id', data.id);
+
+        if (ordersData) {
+          ordersData.forEach((o: any) => {
+            if (o.pickup_time) {
+              const orderDate = o.pickup_time.split(' ')[0];
+              if (orderDate >= todayStr) datesSet.add(orderDate);
+            }
+          });
+        }
+
+        if (resData) {
+          resData.forEach((r: any) => {
+            if (r.reservation_date) {
+              if (r.reservation_date >= todayStr) datesSet.add(r.reservation_date);
+            }
+          });
+        }
+
+        setFutureDatesWithActivity(Array.from(datesSet).sort());
+      }
       setLoading(false);
-
-      const ordersChannel = supabase
-        .channel('realtime_orders')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restData.id}` },
-          (payload) => {
-            if (payload.eventType === 'INSERT') {
-              const newOrd: OrderItem = { 
-                ...payload.new as any, 
-                date: payload.new.pickup_date, 
-                time: payload.new.pickup_time || '12:00', 
-                type: 'order' 
-              };
-              setOrdersList((prev) => [...prev, newOrd].sort((a, b) => (a.time > b.time ? 1 : -1)));
-              
-              if (newOrd.status === 'pending') {
-                setIsAlarmPlaying(true);
-              }
-            } else if (payload.eventType === 'UPDATE') {
-              setOrdersList((prev) => {
-                const updated = prev.map((o) => (o.id === payload.new.id ? { ...payload.new as any, date: payload.new.pickup_date, time: payload.new.pickup_time || '12:00', type: 'order' } : o));
-                if (!updated.some((o) => o.status === 'pending' && o.date === todayDate)) {
-                  setIsAlarmPlaying(false);
-                }
-                return updated;
-              });
-            }
-          }
-        )
-        .subscribe();
-
-      const reservationsChannel = supabase
-        .channel('realtime_reservations')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'reservations', filter: `restaurant_id=eq.${restData.id}` },
-          (payload) => {
-            if (payload.eventType === 'INSERT') {
-              const newRes: OrderItem = { 
-                ...payload.new as any, 
-                date: payload.new.reservation_date, 
-                time: payload.new.reservation_time || '12:00', 
-                type: 'reservation' 
-              };
-              setReservationsList((prev) => [...prev, newRes].sort((a, b) => (a.time > b.time ? 1 : -1)));
-              
-              if (audioEnabled) {
-                playBeep(659.25, 0.2, 'sine');
-                setTimeout(() => playBeep(880, 0.3, 'sine'), 150);
-              }
-            } else if (payload.eventType === 'UPDATE') {
-              setReservationsList((prev) => 
-                prev.map((r) => (r.id === payload.new.id ? { ...r, ...payload.new as any, date: payload.new.reservation_date, time: payload.new.reservation_time || '12:00', type: 'reservation' } : r))
-              );
-            }
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(ordersChannel);
-        supabase.removeChannel(reservationsChannel);
-      };
     };
 
-    init();
-  }, [audioEnabled, router, supabase]);
+    fetchRestaurantAndFutureActivities();
+  }, [supabase, router]);
 
-  const getAudioContext = () => {
-    if (!audioCtxRef.current) {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        audioCtxRef.current = new AudioCtx();
-      }
-    }
-    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
-      audioCtxRef.current.resume();
-    }
-    return audioCtxRef.current;
-  };
-
-  const playBeep = (freq = 880, duration = 0.3, type: OscillatorType = 'sawtooth') => {
-    try {
-      const ctx = getAudioContext();
-      if (!ctx) return;
-
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      gain.gain.setValueAtTime(0.9, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start();
-      osc.stop(ctx.currentTime + duration);
-    } catch (e) {
-      console.error('Errore riproduzione suono:', e);
+  const addOrderSlot = () => {
+    if (newOrderSlot && !orderSlots.includes(newOrderSlot)) {
+      setOrderSlots([...orderSlots, newOrderSlot].sort());
+      setNewOrderSlot('');
     }
   };
 
-  const toggleAudio = () => {
-    if (!audioEnabled) {
-      const ctx = getAudioContext();
-      if (ctx) {
-        ctx.resume().then(() => {
-          setAudioEnabled(true);
-          playBeep(880, 0.3, 'sine');
-        });
-      } else {
-        setAudioEnabled(true);
-      }
-    } else {
-      setAudioEnabled(false);
-      setIsAlarmPlaying(false);
+  const removeOrderSlot = (slot: string) => {
+    setOrderSlots(orderSlots.filter((s) => s !== slot));
+  };
+
+  const addResSlot = () => {
+    if (newResSlot && !resSlots.includes(newResSlot)) {
+      setResSlots([...resSlots, newResSlot].sort());
+      setNewResSlot('');
     }
   };
 
-  const fetchAllData = async (restaurantId: string) => {
-    const { data: ordData } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .order('pickup_time', { ascending: true });
-
-    const { data: resData } = await supabase
-      .from('reservations')
-      .select('*')
-      .eq('restaurant_id', restaurantId)
-      .order('reservation_time', { ascending: true });
-
-    if (ordData) {
-      const formatted = ordData.map((o) => ({
-        ...o,
-        date: o.pickup_date,
-        time: o.pickup_time || '12:00',
-        type: 'order' as const,
-      }));
-      setOrdersList(formatted);
-
-      if (formatted.some((o) => o.status === 'pending' && o.date === todayDate)) {
-        setIsAlarmPlaying(true);
-      }
-    }
-
-    if (resData) {
-      setReservationsList(
-        resData.map((r) => ({
-          ...r,
-          date: r.reservation_date,
-          time: r.reservation_time || '12:00',
-          type: 'reservation' as const,
-        }))
-      );
-    }
+  const removeResSlot = (slot: string) => {
+    setResSlots(resSlots.filter((s) => s !== slot));
   };
 
-  useEffect(() => {
-    let intervalId: any;
-    if (isAlarmPlaying && audioEnabled) {
-      intervalId = setInterval(() => {
-        playBeep(850, 0.25, 'sawtooth');
-        setTimeout(() => playBeep(1200, 0.25, 'sawtooth'), 250);
-      }, 1200);
-    }
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [isAlarmPlaying, audioEnabled]);
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setMessage(null);
 
-  const handleStatusChange = async (id: string, type: 'order' | 'reservation', newStatus: OrderItem['status']) => {
-    const tableName = type === 'order' ? 'orders' : 'reservations';
-    const { error } = await supabase.from(tableName).update({ status: newStatus }).eq('id', id);
+    const { error } = await supabase
+      .from('restaurants')
+      .update({
+        name,
+        description,
+        allow_takeaway: allowTakeaway,
+        allow_delivery: allowDelivery,
+        allow_reservations: allowReservations,
+        delivery_fee: parseFloat(deliveryFee),
+        order_time_slots: orderSlots,
+        reservation_time_slots: resSlots,
+      })
+      .eq('id', restaurant.id);
 
     if (!error) {
-      if (type === 'order') {
-        setOrdersList((prev) => prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o)));
-      } else {
-        setReservationsList((prev) => prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r)));
-      }
-
-      const currentItem = type === 'order' 
-        ? ordersList.find(o => o.id === id) 
-        : reservationsList.find(r => r.id === id);
-
-      if (currentItem) {
-        await fetch('/api/notify-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: currentItem.id,
-            customerPhone: currentItem.customer_phone,
-            customerEmail: currentItem.customer_email,
-            customerName: currentItem.customer_name,
-            newStatus: newStatus,
-            orderType: currentItem.order_type,
-            pickupTime: currentItem.time,
-            type: type,
-            restaurantName: restaurant?.name,
-            totalAmount: currentItem.total_amount,
-          }),
-        }).catch((err) => console.error('Errore chiamata API notifiche:', err));
-      }
+      setMessage('Impostazioni e orari salvati!');
     } else {
-      alert(`Errore aggiornamento: ${error.message}`);
+      setMessage(`Errore: ${error.message}`);
     }
+    setSaving(false);
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
-  };
+  if (loading) return <div className="p-8 text-white bg-slate-900 min-h-screen text-xs">Caricamento...</div>;
 
-  if (loading) return <div className="p-8 text-slate-400 bg-slate-950 min-h-screen text-xs">Caricamento in corso...</div>;
+  return (
+    <div className="min-h-screen bg-slate-900 text-white p-6">
+      <div className="max-w-2xl mx-auto space-y-6">
+        <Link href="/dashboard" className="text-xs text-amber-500 font-bold hover:underline">← Torna alla Dashboard Live</Link>
+        
+        <h1 className="text-2xl font-bold">Impostazioni Locale & Gestione Orari</h1>
 
-  const currentRawList = activeTab === 'orders' ? ordersList : reservationsList;
-  const dateFilteredList = currentRawList.filter((item) => item.date === selectedDate);
-
-  const finalFilteredList = dateFilteredList.filter((item) => {
-    if (statusFilter === 'all') return true;
-    if (statusFilter === 'pending') return item.status === 'pending';
-    if (statusFilter === 'confirmed') return item.status === 'confirmed' || item.status === 'preparing' || item.status === 'ready';
-    if (statusFilter === 'completed') return item.status === 'completed';
-    if (statusFilter === 'cancelled') return item.status === 'cancelled';
-    return true;
-  });
-
-  const lunchList = finalFilteredList.filter((i) => {
-    const hour = parseInt((i.time || '12:00').split(':')[0], 10);
-    return hour < 16;
-  });
-
-  const dinnerList = finalFilteredList.filter((i) => {
-    const hour = parseInt((i.time || '12:00').split(':')[0], 10);
-    return hour >= 16;
-  });
-
-  const renderCard = (item: OrderItem) => {
-    const numPeople = item.guests || item.party_size || 1;
-
-    return (
-      <div key={item.id} className="bg-slate-900/90 hover:bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md transition-all space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <h3 className="font-bold text-sm text-white">{item.customer_name}</h3>
-            
-            {item.type === 'reservation' && (
-              <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2.5 py-0.5 rounded-md text-[11px] font-medium">
-                {numPeople} {numPeople === 1 ? 'persona' : 'persone'}
-              </span>
-            )}
-
-            {item.type === 'order' && (
-              <span className="bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded-md text-[11px] font-medium uppercase tracking-wider">
-                {item.order_type === 'delivery' ? 'Consegna' : 'Ritiro'}
-              </span>
-            )}
-
-            <span className="bg-slate-800 text-slate-200 border border-slate-700 px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold">
-              {item.time}
-            </span>
-
-            {/* STATO ACCANTO ALL'ORARIO */}
-            {item.status === 'pending' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[11px] font-semibold animate-pulse">Da Confermare</span>}
-            {item.status === 'confirmed' && <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Confermato</span>}
-            {item.status === 'preparing' && <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">In Corso</span>}
-            {item.status === 'ready' && <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Pronto</span>}
-            {item.status === 'completed' && <span className="bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold">Completato</span>}
-            {item.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Annullato</span>}
-          </div>
-
-          {/* ESATTAMENTE 3 TASTI RAPIDI IN ALTO A DESTRA: CONFERMA, COMPLETATO, ANNULLA */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {item.status !== 'confirmed' && item.status !== 'completed' && item.status !== 'cancelled' && (
-              <button
-                onClick={() => handleStatusChange(item.id, item.type, 'confirmed')}
-                className="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-[11px] font-bold px-3 py-1 rounded-lg transition"
-              >
-                Conferma
-              </button>
-            )}
-
-            {item.status !== 'completed' && (
-              <button
-                onClick={() => handleStatusChange(item.id, item.type, 'completed')}
-                className="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 text-[11px] font-bold px-3 py-1 rounded-lg transition"
-              >
-                Completato
-              </button>
-            )}
-
-            {item.status !== 'cancelled' && (
-              <button
-                onClick={() => handleStatusChange(item.id, item.type, 'cancelled')}
-                className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-[11px] font-bold px-3 py-1 rounded-lg transition"
-              >
-                Annulla
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* CONTATTI E NOTE SEMPRE VISIBILI (NON COMPRESSE) */}
-        <div className="space-y-2 pt-1 border-t border-slate-800/80">
-          <div className="text-xs text-slate-300 font-mono flex flex-wrap items-center gap-4">
-            <span>Tel: {item.customer_phone || 'N/D'}</span>
-            {item.customer_email && <span>Email: {item.customer_email}</span>}
-          </div>
-
-          {item.notes ? (
-            <div className="bg-slate-950/50 p-2.5 rounded-lg border border-slate-800 text-xs text-amber-300">
-              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note:</span>
-              <p className="whitespace-pre-line leading-snug">{item.notes}</p>
+        {/* INDICATORE VISIVO PER ATTIVITÀ IN DATE FUTURE */}
+        {futureDatesWithActivity.length > 0 && (
+          <div className="bg-amber-500/10 border border-amber-500/40 p-4 rounded-xl space-y-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse"></span>
+              <span className="font-bold text-amber-400 uppercase tracking-wider">Attenzione: ci sono ordini o prenotazioni future registrate!</span>
             </div>
-          ) : (
-            <p className="text-[11px] text-slate-500 italic">Nessuna nota specificata.</p>
-          )}
-        </div>
-
-        {/* COMANDA PRODOTTI PER GLI ORDINI (SEMPRE VISIBILE) */}
-        {item.type === 'order' && item.items && item.items.length > 0 && (
-          <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 space-y-1.5">
-            <div className="flex justify-between items-center border-b border-slate-800/80 pb-1 text-[11px]">
-              <span className="uppercase tracking-wider text-slate-400 font-bold">Comanda:</span>
-              {item.total_amount && <span className="font-mono text-emerald-400 font-bold">Totale: €{Number(item.total_amount).toFixed(2)}</span>}
-            </div>
-            <div className="divide-y divide-slate-800/40">
-              {item.items.map((it, idx) => (
-                <div key={idx} className="py-1 text-xs flex justify-between items-start">
-                  <div>
-                    <span className="font-semibold text-white">{it.quantity}x {it.name}</span>
-                    {it.itemNote && <span className="text-slate-300 text-[11px] block italic">Note: {it.itemNote}</span>}
-                  </div>
-                  {it.price && <span className="text-slate-400 font-mono text-[11px]">€{(it.price * it.quantity).toFixed(2)}</span>}
-                </div>
+            <p className="text-slate-300">Date con attività in arrivo (selezionale nella dashboard live per visualizzarle):</p>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {futureDatesWithActivity.map((dateStr) => (
+                <span key={dateStr} className="bg-slate-800 border border-amber-500/30 text-amber-300 px-2.5 py-1 rounded-md font-mono font-bold text-xs">
+                  {dateStr}
+                </span>
               ))}
             </div>
           </div>
         )}
-      </div>
-    );
-  };
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col md:flex-row relative">
-      
-      {/* HEADER MOBILE COMPATTO (FISSO IN ALTO) */}
-      <div className="md:hidden bg-slate-900 border-b border-slate-800 p-3.5 flex items-center justify-between sticky top-0 z-50">
-        <div>
-          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block">Dashboard Live</span>
-          <h1 className="text-sm font-black tracking-tight text-white truncate max-w-[190px]">{restaurant?.name}</h1>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleAudio}
-            className={`p-2 rounded-xl border text-xs font-bold ${
-              audioEnabled ? 'bg-slate-800 text-emerald-400 border-slate-700' : 'bg-slate-800 text-slate-400 border-slate-700'
-            }`}
-          >
-            {audioEnabled ? '🔊' : '🔇'}
-          </button>
-
-          <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-xl border border-slate-700 text-xs font-bold"
-          >
-            {isSidebarOpen ? '✕ Chiudi' : '☰ Menu'}
-          </button>
-        </div>
-      </div>
-
-      {isSidebarOpen && (
-        <div 
-          onClick={() => setIsSidebarOpen(false)}
-          className="fixed inset-0 bg-black/60 z-30 md:hidden backdrop-blur-xs transition-opacity"
-        />
-      )}
-
-      {/* SIDEBAR LATERALE */}
-      <aside 
-        className={`w-72 md:w-64 bg-slate-900 border-r border-slate-800 p-5 flex flex-col justify-between shrink-0 transition-transform duration-300 ease-in-out fixed md:static inset-y-0 left-0 z-40 ${
-          isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
-        }`}
-      >
-        <div className="space-y-6 pt-12 md:pt-0">
-          <div className="hidden md:block">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">Dashboard Live</span>
-            <h1 className="text-lg font-black tracking-tight text-white mt-0.5 truncate">{restaurant?.name}</h1>
-          </div>
-
-          <nav className="space-y-2 text-xs font-semibold">
-            <Link 
-              href={restaurant?.slug ? `/menu/${restaurant.slug}` : '/dashboard/menu'} 
-              target="_blank"
-              onClick={() => setIsSidebarOpen(false)}
-              className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
-            >
-              <span>Visualizza Menu Pubblico</span>
-            </Link>
-
-            <Link 
-              href="/dashboard/promotions" 
-              onClick={() => setIsSidebarOpen(false)}
-              className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
-            >
-              <span>Gestione Promozioni</span>
-            </Link>
-
-            <Link 
-              href="/dashboard/settings" 
-              onClick={() => setIsSidebarOpen(false)}
-              className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
-            >
-              <span>Impostazioni Ristorante</span>
-            </Link>
-          </nav>
-        </div>
-
-        <div className="space-y-3 pt-6 border-t border-slate-800 text-xs">
-          <button
-            onClick={toggleAudio}
-            className={`w-full py-3 px-3 rounded-xl font-bold border transition text-center hidden md:block ${
-              audioEnabled 
-                ? 'bg-slate-800 text-emerald-400 border-slate-700 hover:bg-slate-700' 
-                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-            }`}
-          >
-            {audioEnabled ? '🔊 Audio Attivo' : '🔇 Audio Disattivato'}
-          </button>
-
-          <button 
-            onClick={handleLogout} 
-            className="w-full bg-slate-800 hover:bg-slate-700 text-red-400 font-semibold py-3 rounded-xl border border-slate-700 transition-colors text-center"
-          >
-            Esci dall'Account
-          </button>
-        </div>
-      </aside>
-
-      {/* CONTENUTO PRINCIPALE */}
-      <main className="flex-1 p-3 sm:p-6 space-y-4 overflow-y-auto">
-        
-        {isAlarmPlaying && (
-          <div className="bg-amber-500 text-slate-950 font-black p-3.5 rounded-xl shadow-lg animate-pulse flex justify-between items-center text-xs">
-            <span>⚠️ CI SONO ORDINI IN ATTESA DI CONFERMA!</span>
-            <button onClick={() => setIsAlarmPlaying(false)} className="bg-slate-950 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold">Silenzia</button>
+        {message && (
+          <div className="bg-slate-800 border border-amber-500/50 text-amber-400 p-3 rounded-lg text-xs">
+            {message}
           </div>
         )}
 
-        <div className="bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="grid grid-cols-2 sm:flex gap-2 text-xs">
-            <button
-              onClick={() => setActiveTab('orders')}
-              className={`px-3 sm:px-4 py-2.5 rounded-xl font-bold transition-all text-center ${
-                activeTab === 'orders' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              Ordini ({ordersList.filter(o => o.date === selectedDate).length})
-            </button>
+        <form onSubmit={handleSave} className="space-y-6">
+          <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+            <h2 className="text-base font-bold text-amber-500">Info Ristorante</h2>
+            <div>
+              <label className="block text-slate-400 text-xs mb-1">Nome Ristorante</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 text-xs mb-1">Descrizione Locale</label>
+              <textarea
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white"
+              />
+            </div>
+          </section>
 
-            <button
-              onClick={() => setActiveTab('reservations')}
-              className={`px-3 sm:px-4 py-2.5 rounded-xl font-bold transition-all text-center ${
-                activeTab === 'reservations' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              Prenotazioni ({reservationsList.filter(r => r.date === selectedDate).length})
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between sm:justify-start gap-2">
-            <span className="text-xs text-slate-400 font-medium">Data:</span>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-semibold focus:outline-none focus:border-slate-600"
-            />
-            {selectedDate !== todayDate && (
+          {/* Configurazione Orari Ordini (Asporto/Delivery) */}
+          <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+            <h2 className="text-base font-bold text-amber-500">Orari Disponibili per Ordini (Asporto/Delivery)</h2>
+            <div className="flex gap-2">
+              <input
+                type="time"
+                value={newOrderSlot}
+                onChange={(e) => setNewOrderSlot(e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white"
+              />
               <button
-                onClick={() => setSelectedDate(todayDate)}
-                className="bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 px-3 py-2 rounded-xl font-medium transition border border-slate-700"
+                type="button"
+                onClick={addOrderSlot}
+                className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-xs"
               >
-                Oggi
+                + Aggiungi Orario Ordine
               </button>
-            )}
-          </div>
-        </div>
+            </div>
 
-        <div className="flex overflow-x-auto pb-1 sm:pb-0 gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800 text-xs no-scrollbar">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'all' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
-          >
-            Tutti ({dateFilteredList.length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('pending')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'pending' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
-          >
-            Da Confermare ({dateFilteredList.filter(i => i.status === 'pending').length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('confirmed')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'confirmed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
-          >
-            In Corso ({dateFilteredList.filter(i => ['confirmed', 'preparing', 'ready'].includes(i.status)).length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('completed')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'completed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
-          >
-            Completati ({dateFilteredList.filter(i => i.status === 'completed').length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('cancelled')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'cancelled' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
-          >
-            Annullati ({dateFilteredList.filter(i => i.status === 'cancelled').length})
-          </button>
-        </div>
+            <div className="flex flex-wrap gap-2 pt-2">
+              {orderSlots.map((slot) => (
+                <span key={slot} className="bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2">
+                  {slot}
+                  <button type="button" onClick={() => removeOrderSlot(slot)} className="text-red-400 font-bold hover:text-red-300">✕</button>
+                </span>
+              ))}
+            </div>
+          </section>
 
-        {finalFilteredList.length === 0 ? (
-          <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center text-slate-400 text-xs">
-            Nessun elemento registrato per la data del {selectedDate}.
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {lunchList.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 border-b border-slate-800 pb-1.5">
-                  <span className="text-slate-300 font-extrabold text-xs uppercase tracking-wider">Pranzo</span>
-                  <span className="text-xs text-slate-500 font-medium">({lunchList.length})</span>
-                </div>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                  {lunchList.map(renderCard)}
-                </div>
-              </section>
-            )}
+          {/* Configurazione Orari Prenotazioni Tavoli */}
+          <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+            <h2 className="text-base font-bold text-amber-500">Orari Disponibili per Prenotazione Tavoli</h2>
+            <div className="flex gap-2">
+              <input
+                type="time"
+                value={newResSlot}
+                onChange={(e) => setNewResSlot(e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white"
+              />
+              <button
+                type="button"
+                onClick={addResSlot}
+                className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-lg text-xs"
+              >
+                + Aggiungi Orario Prenotazione
+              </button>
+            </div>
 
-            {dinnerList.length > 0 && (
-              <section className="space-y-3 pt-2">
-                <div className="flex items-center gap-2 border-b border-slate-800 pb-1.5">
-                  <span className="text-slate-300 font-extrabold text-xs uppercase tracking-wider">Cena</span>
-                  <span className="text-xs text-slate-500 font-medium">({dinnerList.length})</span>
-                </div>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                  {dinnerList.map(renderCard)}
-                </div>
-              </section>
-            )}
-          </div>
-        )}
+            <div className="flex flex-wrap gap-2 pt-2">
+              {resSlots.map((slot) => (
+                <span key={slot} className="bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2">
+                  {slot}
+                  <button type="button" onClick={() => removeResSlot(slot)} className="text-red-400 font-bold hover:text-red-300">✕</button>
+                </span>
+              ))}
+            </div>
+          </section>
 
-      </main>
+          <section className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+            <h2 className="text-base font-bold text-amber-500">Servizi</h2>
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={allowTakeaway} 
+                  onChange={(e) => setAllowTakeaway(e.target.checked)} 
+                  className="w-4 h-4 accent-amber-500 cursor-pointer" 
+                />
+                <span className="text-xs font-semibold">Abilita Ritiro</span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={allowDelivery} 
+                  onChange={(e) => setAllowDelivery(e.target.checked)} 
+                  className="w-4 h-4 accent-amber-500 cursor-pointer" 
+                />
+                <span className="text-xs font-semibold">Abilita Consegna</span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={allowReservations} 
+                  onChange={(e) => setAllowReservations(e.target.checked)} 
+                  className="w-4 h-4 accent-amber-500 cursor-pointer" 
+                />
+                <span className="text-xs font-semibold">Abilita Prenotazione Tavoli</span>
+              </label>
+            </div>
+          </section>
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold p-3 rounded-lg transition-colors text-xs"
+          >
+            {saving ? 'Salvataggio...' : 'Salva Impostazioni'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
