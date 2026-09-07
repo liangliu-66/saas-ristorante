@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const SENDER_EMAIL = 'Ristorante <onboarding@resend.dev>'; // Sostituisci con il tuo dominio verificato quando sei pronto
+const SENDER_EMAIL = 'NOM SUSHI VIBES <onboarding@resend.dev>'; // Sostituisci con il tuo dominio verificato quando sei pronto
 
 export async function POST(request: Request) {
   try {
@@ -30,17 +30,29 @@ export async function POST(request: Request) {
 
     // --- 1. GESTIONE ORDINE (Asporto / Delivery) ---
     if (type === 'order') {
-      const formattedItemsHtml = items && Array.isArray(items) 
-        ? items.map((it: any) => `
-            <tr>
-              <td style="padding: 8px; border-bottom: 1px solid #eee;">${it.quantity}x ${it.name} ${it.itemNote ? `<br><small style="color: #666;">${it.itemNote}</small>` : ''}</td>
-              <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">€${(Number(it.price || 0) * Number(it.quantity || 1)).toFixed(2)}</td>
-            </tr>
-          `).join('')
-        : '<tr><td colspan="2" style="padding: 8px;">Dettagli prodotti non disponibili</td></tr>';
+      const formattedItemsHtml = items && Array.isArray(items) && items.length > 0
+        ? items.map((it: any) => {
+            const name = it.name || it.product?.name || 'Prodotto';
+            const quantity = it.quantity || 1;
+            const price = Number(it.price || it.product?.price || 0);
+            const note = it.itemNote || it.note || '';
+
+            return `
+              <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #eee;">
+                  ${quantity}x ${name} 
+                  ${note ? `<br><small style="color: #666;">Note: ${note}</small>` : ''}
+                </td>
+                <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">
+                  €${(price * quantity).toFixed(2)}
+                </td>
+              </tr>
+            `;
+          }).join('')
+        : '<tr><td colspan="2" style="padding: 8px; color: #666;">Dettagli prodotti non disponibili</td></tr>';
 
       if (newStatus === 'pending') {
-        subject = `Conferma Ricezione Ordine - ${restaurantName || 'Ristorante'}`;
+        subject = `Conferma Ricezione Ordine - ${restaurantName || 'NOM SUSHI VIBES'}`;
         htmlContent = `
           <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
             <h2 style="color: #d97706; margin-top: 0;">Grazie per il tuo ordine, ${customerName}!</h2>
@@ -57,7 +69,7 @@ export async function POST(request: Request) {
           </div>
         `;
       } else if (newStatus === 'confirmed') {
-        subject = `Ordine Confermato! - ${restaurantName || 'Ristorante'}`;
+        subject = `Ordine Confermato! - ${restaurantName || 'NOM SUSHI VIBES'}`;
         htmlContent = `
           <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
             <h2 style="color: #059669; margin-top: 0;">Il tuo ordine è stato confermato!</h2>
@@ -67,12 +79,12 @@ export async function POST(request: Request) {
           </div>
         `;
       }
-    } 
+    }
     
     // --- 2. GESTIONE PRENOTAZIONE TAVOLO ---
     else if (type === 'reservation') {
       if (newStatus === 'pending') {
-        subject = `Conferma Richiesta Prenotazione Tavolo - ${restaurantName || 'Ristorante'}`;
+        subject = `Conferma Richiesta Prenotazione Tavolo - ${restaurantName || 'NOM SUSHI VIBES'}`;
         htmlContent = `
           <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
             <h2 style="color: #d97706; margin-top: 0;">Richiesta Prenotazione Ricevuta, ${customerName}!</h2>

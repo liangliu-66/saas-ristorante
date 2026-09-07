@@ -151,13 +151,13 @@ export default function MenuPage() {
     if (prodData) setProducts(prodData);
   };
 
-  // Generatore di slot orari basato sulle impostazioni del database
+  // Generatore di slot orari basato esclusivamente sulle impostazioni del database
   const getAvailableTimeSlots = () => {
     const customSlots = restaurant?.order_time_slots;
     if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
-      return customSlots;
+      return customSlots.sort();
     }
-    return ['12:00', '12:30', '13:00', '19:30', '20:00', '20:30'];
+    return [];
   };
 
   const addToCart = (product: Product) => {
@@ -233,6 +233,7 @@ export default function MenuPage() {
             type: 'order',
             restaurantName: restaurant?.name,
             totalAmount: totalAmount,
+            items: cart, // Passa correttamente l'array dei prodotti all'API
           }),
         });
       } catch (err) {
