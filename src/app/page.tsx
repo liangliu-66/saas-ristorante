@@ -165,7 +165,7 @@ function PublicPageContent() {
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
 
     if (!isValidPhone(customerPhone)) {
-      alert('Inserisci un numero di telefono valido di almeno 10 cifre!');
+      alert('Inserisci un numero di telefono valido');
       return;
     }
     if (!customerEmail) { alert('Inserisci un indirizzo email valido!'); return; }
@@ -684,7 +684,7 @@ function PublicPageContent() {
                   />
                   <input
                     type="tel"
-                    placeholder="Numero di telefono (min. 10 cifre) *"
+                    placeholder="Numero di telefono *"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                     className={`w-full bg-slate-900 border rounded-lg p-2.5 text-xs text-white transition ${
@@ -756,7 +756,7 @@ function PublicPageContent() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 type="tel"
-                placeholder="Telefono (min. 10 cifre)"
+                placeholder="Telefono *"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 className={`w-full bg-slate-900 border rounded-lg p-2.5 text-white ${
@@ -803,7 +803,7 @@ function PublicPageContent() {
             </div>
 
             <textarea
-              placeholder="Note o richieste particolari per il tavolo (es. seggiolone, allergie...)"
+              placeholder="Note generali (opzionale)"
               value={resNotes}
               onChange={(e) => setResNotes(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
