@@ -45,7 +45,6 @@ function PublicPageContent() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedReceipt, setSubmittedReceipt] = useState<any>(null);
-  const [currentSlide, setCurrentSlide] = useState(0);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -75,7 +74,6 @@ function PublicPageContent() {
             setOrderType('delivery');
           }
 
-          // Imposta i default iniziali se esistono slot
           const defaultOrderSlots = restData.order_time_slots;
           if (defaultOrderSlots && Array.isArray(defaultOrderSlots) && defaultOrderSlots.length > 0) {
             setPickupTime(defaultOrderSlots[0]);
@@ -119,14 +117,6 @@ function PublicPageContent() {
       isMounted = false;
     };
   }, [supabase]);
-
-  useEffect(() => {
-    if (promotions.length <= 1) return;
-    const interval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % promotions.length);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [promotions.length]);
 
   const rawTotal = Object.values(cart).reduce((sum, entry) => sum + (entry.product.price * entry.quantity), 0);
   const activeDiscount = discountRules.find((rule) => rawTotal >= Number(rule.min_amount));
@@ -353,7 +343,6 @@ function PublicPageContent() {
   const timeSlots = getAvailableTimeSlots(orderDate);
   const reservationTimeSlots = getAvailableReservationTimeSlots(resDate);
 
-  // Sincronizza il valore selezionato se lo slot corrente non è più disponibile nel giorno scelto
   useEffect(() => {
     if (timeSlots.length > 0 && !timeSlots.includes(pickupTime)) {
       setPickupTime(timeSlots[0]);
@@ -396,16 +385,25 @@ function PublicPageContent() {
           )}
         </header>
 
+        {/* CAROSELLO ORIZZONTALE CON SCORCIO DELLE ALTRE SLIDE */}
         {promotions.length > 0 && (
-          <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 p-4 rounded-xl shadow-lg transition-all">
-            <div className="space-y-1">
-              <span className="bg-amber-500 text-slate-900 font-black text-[9px] uppercase px-2 py-0.5 rounded tracking-widest">
-                Promozione #{currentSlide + 1}
-              </span>
-              <h3 className="font-bold text-sm text-amber-400">{promotions[currentSlide].title}</h3>
-              {promotions[currentSlide].description && (
-                <p className="text-xs text-slate-300">{promotions[currentSlide].description}</p>
-              )}
+          <div className="space-y-2">
+            <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest block px-1">Le Nostre Promozioni</span>
+            <div className="flex overflow-x-auto gap-3 pb-2 pt-1 px-1 snap-x snap-mandatory no-scrollbar">
+              {promotions.map((promo, idx) => (
+                <div 
+                  key={promo.id || idx} 
+                  className="min-w-[80%] sm:min-w-[70%] bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 p-4 rounded-xl shadow-lg snap-start shrink-0 space-y-1"
+                >
+                  <span className="bg-amber-500 text-slate-900 font-black text-[9px] uppercase px-2 py-0.5 rounded tracking-widest">
+                    Promo #{idx + 1}
+                  </span>
+                  <h3 className="font-bold text-sm text-amber-400 pt-1">{promo.title}</h3>
+                  {promo.description && (
+                    <p className="text-xs text-slate-300 line-clamp-2">{promo.description}</p>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -650,7 +648,6 @@ function PublicPageContent() {
                   ))}
                 </div>
 
-                {/* RIEPILOGO PREZZI E SCONTO VISIBILE AL CLIENTE */}
                 <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-xs space-y-2 font-mono">
                   <div className="flex justify-between text-slate-400">
                     <span>Subtotale:</span>
@@ -798,7 +795,6 @@ function PublicPageContent() {
               />
             </div>
 
-            {/* CAMPO NOTE PER LA PRENOTAZIONE */}
             <textarea
               placeholder="Note o richieste particolari per il tavolo (es. seggiolone, allergie...)"
               value={resNotes}
@@ -819,7 +815,6 @@ function PublicPageContent() {
 
       </div>
 
-      {/* Barra Sticky in basso per il carrello */}
       {Object.keys(cart).length > 0 && activeTab === 'order' && !submittedReceipt && (
         <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-800 p-4 shadow-2xl z-50 animate-slide-up">
           <div className="max-w-xl mx-auto flex items-center justify-between gap-4">
