@@ -21,6 +21,7 @@ function PublicPageContent() {
   const [cart, setCart] = useState<Record<string, { product: any; quantity: number; note: string }>>({});
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
   
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -102,7 +103,7 @@ function PublicPageContent() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     if (promotions.length <= 1) return;
@@ -158,6 +159,7 @@ function PublicPageContent() {
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
 
     if (!isValidPhone(customerPhone)) return;
+    if (!customerEmail) { alert('Inserisci un indirizzo email valido!'); return; }
 
     setIsSubmitting(true);
 
@@ -173,24 +175,48 @@ function PublicPageContent() {
       ? `${generalNotes}${discountPercent > 0 ? ` [Sconto ${discountPercent}% applicato]` : ''}` 
       : (discountPercent > 0 ? `[Sconto ${discountPercent}% applicato]` : '');
 
-    const { error } = await supabase.from('orders').insert({
+    const { data: insertedOrder, error } = await supabase.from('orders').insert({
       restaurant_id: restaurant?.id,
       customer_name: customerName,
       customer_phone: customerPhone,
+      customer_email: customerEmail,
       order_type: orderType,
       pickup_time: fullPickupTime,
       items: formattedItems,
       notes: orderNotesPayload,
       total_amount: finalTotal,
       status: 'pending',
-    });
+    }).select().single();
 
     setIsSubmitting(false);
-    if (!error) {
+
+    if (!error && insertedOrder) {
+      try {
+        await fetch('/api/notify-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: insertedOrder.id,
+            customerPhone: customerPhone,
+            customerEmail: customerEmail,
+            customerName: customerName,
+            newStatus: 'pending',
+            orderType: orderType,
+            pickupTime: fullPickupTime,
+            type: 'order',
+            restaurantName: restaurant?.name,
+            totalAmount: finalTotal,
+          }),
+        });
+      } catch (err) {
+        console.error('Errore invio email automatica:', err);
+      }
+
       setSubmittedReceipt({
         type: 'order',
         customerName,
         customerPhone,
+        customerEmail,
         orderType: orderType === 'takeaway' ? 'Ritiro d\'asporto' : 'Consegna a domicilio',
         pickupTime: fullPickupTime,
         items: formattedItems,
@@ -200,7 +226,7 @@ function PublicPageContent() {
       setCart({});
       setGeneralNotes('');
     } else {
-      alert(`Errore invio ordine: ${error.message}`);
+      alert(`Errore invio ordine: ${error?.message}`);
     }
   };
 
@@ -360,15 +386,9 @@ function PublicPageContent() {
                   <span>€{submittedReceipt.total.toFixed(2)}</span>
                 </div>
 
-                {/* Pulsante invio WhatsApp */}
-                <a
-                  href={`https://wa.me/?text=${encodeURIComponent(`*Nuovo Ordine*\nNome: ${submittedReceipt.customerName}\nTipo: ${submittedReceipt.orderType}\nOrario: ${submittedReceipt.pickupTime}\nTotale: €${submittedReceipt.total.toFixed(2)}`)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg font-sans uppercase tracking-wider mt-4"
-                >
-                  Invia Conferma via WhatsApp 📱
-                </a>
+                <div className="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg text-emerald-400 text-center font-sans text-xs mt-4">
+                  Abbiamo inviato un'email di conferma all'indirizzo <strong>{submittedReceipt.customerEmail}</strong>.
+                </div>
               </div>
             ) : (
               <div className="space-y-3 font-mono">
@@ -385,15 +405,11 @@ function PublicPageContent() {
                   <span className="font-bold text-white">{submittedReceipt.guests} persone</span>
                 </div>
 
-                {/* Pulsante invio WhatsApp Prenotazione */}
-                <a
-                  href={`https://wa.me/?text=${encodeURIComponent(`*Nuova Prenotazione Tavolo*\nNome: ${submittedReceipt.customerName}\nData: ${submittedReceipt.date} ore ${submittedReceipt.time}\nCoperti: ${submittedReceipt.guests}`)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block text-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg font-sans uppercase tracking-wider mt-4"
-                >
-                  Invia Prenotazione via WhatsApp 📱
-                </a>
+                {submittedReceipt.customerEmail && (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg text-emerald-400 text-center font-sans text-xs mt-4">
+                    Abbiamo registrato la tua prenotazione e inviato i dettagli a <strong>{submittedReceipt.customerEmail}</strong>.
+                  </div>
+                )}
               </div>
             )}
 
@@ -513,7 +529,6 @@ function PublicPageContent() {
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
                     required
                   />
-                  {/* Input telefono con bordo rosso automatico se non valido */}
                   <input
                     type="tel"
                     placeholder="Numero di telefono *"
@@ -522,6 +537,14 @@ function PublicPageContent() {
                     className={`w-full bg-slate-900 border rounded-lg p-2.5 text-xs text-white transition ${
                       customerPhone && !isValidPhone(customerPhone) ? 'border-rose-500' : 'border-slate-700 focus:border-amber-500'
                     }`}
+                    required
+                  />
+                  <input
+                    type="email"
+                    placeholder="Indirizzo email per conferma *"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white border-slate-700 focus:border-amber-500"
                     required
                   />
 
