@@ -385,7 +385,7 @@ function PublicPageContent() {
     <img 
       src={restaurant?.logo_url || '/logo.png'} 
       alt={restaurant?.name || 'Logo'} 
-      className="w-20 h-20 object-contain rounded-2xl bg-slate-800 p-2 border border-slate-700 shadow-md"
+      className="w-40 h-40 object-contain rounded-2xl bg-slate-800 p-2 border border-slate-700 shadow-md"
     />
   </div>
 
