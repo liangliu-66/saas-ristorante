@@ -33,7 +33,6 @@ export default function LiveDashboardPage() {
   const [activeTab, setActiveTab] = useState<'orders' | 'reservations'>('orders');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
   const [selectedDate, setSelectedDate] = useState<string>(todayDate);
-  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -335,48 +334,30 @@ export default function LiveDashboardPage() {
               {item.time}
             </span>
 
-            {/* STATO SPOSTATO VICINO ALL'ORARIO */}
+            {/* STATO ACCANTO ALL'ORARIO */}
             {item.status === 'pending' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[11px] font-semibold animate-pulse">Da Confermare</span>}
             {item.status === 'confirmed' && <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Confermato</span>}
-            {item.status === 'preparing' && <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">In Cucina</span>}
+            {item.status === 'preparing' && <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">In Corso</span>}
             {item.status === 'ready' && <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Pronto</span>}
             {item.status === 'completed' && <span className="bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold">Completato</span>}
             {item.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Annullato</span>}
           </div>
 
-          {/* TASTI DI STATO RAPIDI IN ALTO A DESTRA */}
+          {/* ESATTAMENTE 3 TASTI RAPIDI IN ALTO A DESTRA: CONFERMA, COMPLETATO, ANNULLA */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {item.status !== 'confirmed' && item.status !== 'preparing' && item.status !== 'ready' && (
+            {item.status !== 'confirmed' && item.status !== 'completed' && item.status !== 'cancelled' && (
               <button
                 onClick={() => handleStatusChange(item.id, item.type, 'confirmed')}
-                className="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+                className="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-[11px] font-bold px-3 py-1 rounded-lg transition"
               >
                 Conferma
-              </button>
-            )}
-
-            {item.type === 'order' && item.status !== 'preparing' && item.status !== 'ready' && item.status !== 'completed' && (
-              <button
-                onClick={() => handleStatusChange(item.id, item.type, 'preparing')}
-                className="bg-purple-600/20 hover:bg-purple-600 text-purple-400 hover:text-white border border-purple-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
-              >
-                In Cucina
-              </button>
-            )}
-
-            {item.type === 'order' && item.status !== 'ready' && item.status !== 'completed' && (
-              <button
-                onClick={() => handleStatusChange(item.id, item.type, 'ready')}
-                className="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
-              >
-                Pronto
               </button>
             )}
 
             {item.status !== 'completed' && (
               <button
                 onClick={() => handleStatusChange(item.id, item.type, 'completed')}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+                className="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 text-[11px] font-bold px-3 py-1 rounded-lg transition"
               >
                 Completato
               </button>
@@ -385,7 +366,7 @@ export default function LiveDashboardPage() {
             {item.status !== 'cancelled' && (
               <button
                 onClick={() => handleStatusChange(item.id, item.type, 'cancelled')}
-                className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+                className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-[11px] font-bold px-3 py-1 rounded-lg transition"
               >
                 Annulla
               </button>
