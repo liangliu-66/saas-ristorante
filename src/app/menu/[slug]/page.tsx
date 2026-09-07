@@ -40,9 +40,9 @@ export default function MenuPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [customerEmail, setCustomerEmail] = useState(''); // <-- STATO EMAIL AGGIUNTO
+  const [customerEmail, setCustomerEmail] = useState('');
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
-  const [pickupTime, setPickupTime] = useState('19:30');
+  const [pickupTime, setPickupTime] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
@@ -96,6 +96,11 @@ export default function MenuPage() {
         setRestaurant(restData);
         setIsOwnerView(false);
         await fetchPublicData(restData.id);
+
+        // Imposta il primo orario disponibile come default se esiste
+        if (restData.order_time_slots && restData.order_time_slots.length > 0) {
+          setPickupTime(restData.order_time_slots[0]);
+        }
       }
       
       setLoading(false);
@@ -146,6 +151,15 @@ export default function MenuPage() {
     if (prodData) setProducts(prodData);
   };
 
+  // Generatore di slot orari basato sulle impostazioni del database
+  const getAvailableTimeSlots = () => {
+    const customSlots = restaurant?.order_time_slots;
+    if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
+      return customSlots;
+    }
+    return ['12:00', '12:30', '13:00', '19:30', '20:00', '20:30'];
+  };
+
   const addToCart = (product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
@@ -175,8 +189,8 @@ export default function MenuPage() {
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0 || !restaurant) return;
-    if (!customerName || !customerPhone || !customerEmail) {
-      alert('Inserisci nome, telefono ed email per procedere.');
+    if (!customerName || !customerPhone || !customerEmail || !pickupTime) {
+      alert('Compila tutti i campi obbligatori, compreso l\'orario.');
       return;
     }
 
@@ -187,7 +201,7 @@ export default function MenuPage() {
       restaurant_id: restaurant.id,
       customer_name: customerName,
       customer_phone: customerPhone,
-      customer_email: customerEmail, // <-- SALVATAGGIO EMAIL NEL DB
+      customer_email: customerEmail,
       order_type: orderType,
       items: cart,
       total_amount: totalAmount,
@@ -204,7 +218,6 @@ export default function MenuPage() {
       .single();
 
     if (!error && insertedOrder) {
-      // Chiamata immediata a Resend per l'email di ricezione ordine
       try {
         await fetch('/api/notify-order', {
           method: 'POST',
@@ -469,133 +482,101 @@ export default function MenuPage() {
 
               <form onSubmit={handleCheckout} className="space-y-4 pt-2">
 
-  {/* DATI CLIENTE */}
-  <div className="space-y-3">
+                {/* DATI CLIENTE */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Nome e cognome *</label>
+                    <input
+                      type="text"
+                      required
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="Inserisci il tuo nome e cognome"
+                      autoComplete="name"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-    {/* NOME */}
-    <div>
-      <label className="block text-xs font-semibold text-slate-300 mb-1">
-        Nome e cognome *
-      </label>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Numero di telefono *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      placeholder="Inserisci il numero di telefono"
+                      autoComplete="tel"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-      <input
-        type="text"
-        required
-        value={customerName}
-        onChange={(e) => setCustomerName(e.target.value)}
-        placeholder="Inserisci il tuo nome e cognome"
-        autoComplete="name"
-        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-      />
-    </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Email *</label>
+                    <input
+                      type="email"
+                      required
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      placeholder="Inserisci la tua email"
+                      autoComplete="email"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">Ti invieremo la conferma dell'ordine a questo indirizzo.</p>
+                  </div>
+                </div>
 
-    {/* TELEFONO */}
-    <div>
-      <label className="block text-xs font-semibold text-slate-300 mb-1">
-        Numero di telefono *
-      </label>
+                {/* TIPO ORDINE + ORARIO SELEZIONABILE DALLE IMPOSTAZIONI */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Tipo di ordine</label>
+                    <select
+                      value={orderType}
+                      onChange={(e) => setOrderType(e.target.value as 'takeaway' | 'delivery')}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="takeaway">Ritiro in sede (Asporto)</option>
+                      <option value="delivery">Consegna a domicilio</option>
+                    </select>
+                  </div>
 
-      <input
-        type="tel"
-        required
-        value={customerPhone}
-        onChange={(e) => setCustomerPhone(e.target.value)}
-        placeholder="Inserisci il numero di telefono"
-        autoComplete="tel"
-        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-      />
-    </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Orario di ritiro/consegna *</label>
+                    <select
+                      required
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="" disabled>Seleziona un orario</option>
+                      {getAvailableTimeSlots().map((slot: string) => (
+                        <option key={slot} value={slot}>{slot}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-    {/* EMAIL */}
-    <div>
-      <label className="block text-xs font-semibold text-slate-300 mb-1">
-        Email *
-      </label>
+                {/* NOTE */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Note</label>
+                  <textarea
+                    placeholder="Note generali (opzionale)"
+                    value={generalNotes}
+                    onChange={(e) => setGeneralNotes(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    rows={2}
+                  />
+                </div>
 
-      <input
-        type="email"
-        required
-        value={customerEmail}
-        onChange={(e) => setCustomerEmail(e.target.value)}
-        placeholder="Inserisci la tua email"
-        autoComplete="email"
-        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-      />
+                {/* PULSANTE */}
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold p-3 rounded-lg text-xs transition uppercase tracking-wider"
+                >
+                  {submitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
+                </button>
 
-      <p className="text-[10px] text-slate-500 mt-1">
-        Ti invieremo la conferma dell'ordine a questo indirizzo.
-      </p>
-    </div>
-
-  </div>
-
-  {/* TIPO ORDINE + ORARIO */}
-  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-    <div>
-      <label className="block text-xs font-semibold text-slate-300 mb-1">
-        Tipo di ordine
-      </label>
-
-      <select
-        value={orderType}
-        onChange={(e) =>
-          setOrderType(e.target.value as 'takeaway' | 'delivery')
-        }
-        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
-      >
-        <option value="takeaway">
-          Ritiro in sede (Asporto)
-        </option>
-
-        <option value="delivery">
-          Consegna a domicilio
-        </option>
-      </select>
-    </div>
-
-    <div>
-      <label className="block text-xs font-semibold text-slate-300 mb-1">
-        Orario
-      </label>
-
-      <input
-        type="time"
-        value={pickupTime}
-        onChange={(e) => setPickupTime(e.target.value)}
-        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
-      />
-    </div>
-
-  </div>
-
-  {/* NOTE */}
-  <div>
-    <label className="block text-xs font-semibold text-slate-300 mb-1">
-      Note
-    </label>
-
-    <textarea
-      placeholder="Note generali (opzionale)"
-      value={generalNotes}
-      onChange={(e) => setGeneralNotes(e.target.value)}
-      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-      rows={2}
-    />
-  </div>
-
-  {/* PULSANTE */}
-  <button
-    type="submit"
-    disabled={submitting}
-    className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold p-3 rounded-lg text-xs transition uppercase tracking-wider"
-  >
-    {submitting
-      ? 'Invio in corso...'
-      : 'Conferma ed Invia Ordine'}
-  </button>
-
-</form>
+              </form>
             </div>
           )}
         </div>
