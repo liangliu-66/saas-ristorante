@@ -35,10 +35,8 @@ export default function LiveDashboardPage() {
   const [selectedDate, setSelectedDate] = useState<string>(todayDate);
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   
-  // Stato per la gestione della sidebar mobile a comparsa
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Gestione Audio
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -283,10 +281,6 @@ export default function LiveDashboardPage() {
     }
   };
 
-  const toggleExpand = (id: string) => {
-    setExpandedCards((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
@@ -318,7 +312,6 @@ export default function LiveDashboardPage() {
 
   const renderCard = (item: OrderItem) => {
     const numPeople = item.guests || item.party_size || 1;
-    const isExpanded = !!expandedCards[item.id];
 
     return (
       <div key={item.id} className="bg-slate-900/90 hover:bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md transition-all space-y-3">
@@ -338,13 +331,11 @@ export default function LiveDashboardPage() {
               </span>
             )}
 
-            <span className="bg-slate-800 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold">
+            <span className="bg-slate-800 text-slate-200 border border-slate-700 px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold">
               {item.time}
             </span>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">{item.date}</span>
+            {/* STATO SPOSTATO VICINO ALL'ORARIO */}
             {item.status === 'pending' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[11px] font-semibold animate-pulse">Da Confermare</span>}
             {item.status === 'confirmed' && <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Confermato</span>}
             {item.status === 'preparing' && <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">In Cucina</span>}
@@ -352,8 +343,74 @@ export default function LiveDashboardPage() {
             {item.status === 'completed' && <span className="bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold">Completato</span>}
             {item.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded text-[11px] font-semibold">Annullato</span>}
           </div>
+
+          {/* TASTI DI STATO RAPIDI IN ALTO A DESTRA */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {item.status !== 'confirmed' && item.status !== 'preparing' && item.status !== 'ready' && (
+              <button
+                onClick={() => handleStatusChange(item.id, item.type, 'confirmed')}
+                className="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+              >
+                Conferma
+              </button>
+            )}
+
+            {item.type === 'order' && item.status !== 'preparing' && item.status !== 'ready' && item.status !== 'completed' && (
+              <button
+                onClick={() => handleStatusChange(item.id, item.type, 'preparing')}
+                className="bg-purple-600/20 hover:bg-purple-600 text-purple-400 hover:text-white border border-purple-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+              >
+                In Cucina
+              </button>
+            )}
+
+            {item.type === 'order' && item.status !== 'ready' && item.status !== 'completed' && (
+              <button
+                onClick={() => handleStatusChange(item.id, item.type, 'ready')}
+                className="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+              >
+                Pronto
+              </button>
+            )}
+
+            {item.status !== 'completed' && (
+              <button
+                onClick={() => handleStatusChange(item.id, item.type, 'completed')}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+              >
+                Completato
+              </button>
+            )}
+
+            {item.status !== 'cancelled' && (
+              <button
+                onClick={() => handleStatusChange(item.id, item.type, 'cancelled')}
+                className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+              >
+                Annulla
+              </button>
+            )}
+          </div>
         </div>
 
+        {/* CONTATTI E NOTE SEMPRE VISIBILI (NON COMPRESSE) */}
+        <div className="space-y-2 pt-1 border-t border-slate-800/80">
+          <div className="text-xs text-slate-300 font-mono flex flex-wrap items-center gap-4">
+            <span>Tel: {item.customer_phone || 'N/D'}</span>
+            {item.customer_email && <span>Email: {item.customer_email}</span>}
+          </div>
+
+          {item.notes ? (
+            <div className="bg-slate-950/50 p-2.5 rounded-lg border border-slate-800 text-xs text-amber-300">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note:</span>
+              <p className="whitespace-pre-line leading-snug">{item.notes}</p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-500 italic">Nessuna nota specificata.</p>
+          )}
+        </div>
+
+        {/* COMANDA PRODOTTI PER GLI ORDINI (SEMPRE VISIBILE) */}
         {item.type === 'order' && item.items && item.items.length > 0 && (
           <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 space-y-1.5">
             <div className="flex justify-between items-center border-b border-slate-800/80 pb-1 text-[11px]">
@@ -373,49 +430,6 @@ export default function LiveDashboardPage() {
             </div>
           </div>
         )}
-
-        {isExpanded && (
-          <div className="space-y-2 pt-2 border-t border-slate-800 transition-all">
-            <div className="text-xs text-slate-300 font-mono flex flex-wrap items-center gap-4">
-              <span>Tel: {item.customer_phone || 'N/D'}</span>
-              {item.customer_email && <span>Email: {item.customer_email}</span>}
-            </div>
-
-            {item.notes ? (
-              <div className="bg-slate-950/40 p-2.5 rounded-lg border border-slate-800 text-xs text-slate-300">
-                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Note:</span>
-                <p className="whitespace-pre-line leading-snug">{item.notes}</p>
-              </div>
-            ) : (
-              <p className="text-[11px] text-slate-500 italic">Nessuna nota specificata.</p>
-            )}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between pt-1 border-t border-slate-800">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-medium">Stato:</span>
-            <select
-              value={item.status}
-              onChange={(e) => handleStatusChange(item.id, item.type, e.target.value as OrderItem['status'])}
-              className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-medium focus:outline-none focus:border-slate-500 cursor-pointer"
-            >
-              <option value="pending">Da Confermare</option>
-              <option value="confirmed">Confermato</option>
-              {item.type === 'order' && <option value="preparing">In Cucina</option>}
-              {item.type === 'order' && <option value="ready">Pronto</option>}
-              <option value="completed">Completato</option>
-              <option value="cancelled">Annullato</option>
-            </select>
-          </div>
-
-          <button
-            onClick={() => toggleExpand(item.id)}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors border border-slate-700"
-          >
-            {isExpanded ? 'Comprimi' : 'Dettagli'}
-          </button>
-        </div>
       </div>
     );
   };
@@ -431,7 +445,6 @@ export default function LiveDashboardPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Tasto rapido Audio Mobile */}
           <button
             onClick={toggleAudio}
             className={`p-2 rounded-xl border text-xs font-bold ${
@@ -441,7 +454,6 @@ export default function LiveDashboardPage() {
             {audioEnabled ? '🔊' : '🔇'}
           </button>
 
-          {/* Tasto Apertura Menu Laterale Mobile */}
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-xl border border-slate-700 text-xs font-bold"
@@ -451,7 +463,6 @@ export default function LiveDashboardPage() {
         </div>
       </div>
 
-      {/* OVERLAY SCURO PER CHIUDERE IL MENU MOBILE AL TOCCO ESTERNO */}
       {isSidebarOpen && (
         <div 
           onClick={() => setIsSidebarOpen(false)}
@@ -459,7 +470,7 @@ export default function LiveDashboardPage() {
         />
       )}
 
-      {/* SIDEBAR LATERALE (COMPATTA E A SCOMPARSA SU MOBILE, FISSA SU DESKTOP) */}
+      {/* SIDEBAR LATERALE */}
       <aside 
         className={`w-72 md:w-64 bg-slate-900 border-r border-slate-800 p-5 flex flex-col justify-between shrink-0 transition-transform duration-300 ease-in-out fixed md:static inset-y-0 left-0 z-40 ${
           isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
@@ -523,7 +534,6 @@ export default function LiveDashboardPage() {
       {/* CONTENUTO PRINCIPALE */}
       <main className="flex-1 p-3 sm:p-6 space-y-4 overflow-y-auto">
         
-        {/* Banner Allarme Attivo */}
         {isAlarmPlaying && (
           <div className="bg-amber-500 text-slate-950 font-black p-3.5 rounded-xl shadow-lg animate-pulse flex justify-between items-center text-xs">
             <span>⚠️ CI SONO ORDINI IN ATTESA DI CONFERMA!</span>
@@ -531,7 +541,6 @@ export default function LiveDashboardPage() {
           </div>
         )}
 
-        {/* Toolbar Superiore: Tabs e Filtro Data */}
         <div className="bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="grid grid-cols-2 sm:flex gap-2 text-xs">
             <button
@@ -572,7 +581,6 @@ export default function LiveDashboardPage() {
           </div>
         </div>
 
-        {/* Filtri Rapidi per Stato */}
         <div className="flex overflow-x-auto pb-1 sm:pb-0 gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800 text-xs no-scrollbar">
           <button
             onClick={() => setStatusFilter('all')}
@@ -606,7 +614,6 @@ export default function LiveDashboardPage() {
           </button>
         </div>
 
-        {/* Elenco Sezionato Pranzo / Cena */}
         {finalFilteredList.length === 0 ? (
           <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center text-slate-400 text-xs">
             Nessun elemento registrato per la data del {selectedDate}.
