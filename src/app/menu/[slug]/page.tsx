@@ -554,6 +554,11 @@ export default function MenuPage() {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">Orario di ritiro/consegna *</label>
+                    
+                    <div className="text-xs text-red-400">
+                      DEBUG ORARI: {JSON.stringify(restaurant?.order_time_slots)}
+                    </div>
+                    
                     <select
                       required
                       value={pickupTime}
