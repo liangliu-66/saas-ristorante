@@ -467,70 +467,135 @@ export default function MenuPage() {
                 <span className="text-emerald-400 font-mono">€ {totalAmount.toFixed(2)}</span>
               </div>
 
-              <form onSubmit={handleCheckout} className="space-y-3 pt-2">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Il tuo nome *"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
-                  />
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Numero di telefono *"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
+              <form onSubmit={handleCheckout} className="space-y-4 pt-2">
 
-                {/* CAMPO EMAIL OBBLIGATORIO AGGIUNTO NEL FORM */}
-                <input
-                  type="email"
-                  required
-                  placeholder="Indirizzo Email (per la conferma) *"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
-                />
+  {/* DATI CLIENTE */}
+  <div className="space-y-3">
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <select
-                    value={orderType}
-                    onChange={(e) => setOrderType(e.target.value as 'takeaway' | 'delivery')}
-                    className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="takeaway">Ritiro in sede (Asporto)</option>
-                    <option value="delivery">Consegna a domicilio</option>
-                  </select>
+    {/* NOME */}
+    <div>
+      <label className="block text-xs font-semibold text-slate-300 mb-1">
+        Nome e cognome *
+      </label>
 
-                  <input
-                    type="time"
-                    value={pickupTime}
-                    onChange={(e) => setPickupTime(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
+      <input
+        type="text"
+        required
+        value={customerName}
+        onChange={(e) => setCustomerName(e.target.value)}
+        placeholder="Inserisci il tuo nome e cognome"
+        autoComplete="name"
+        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+      />
+    </div>
 
-                <textarea
-                  placeholder="Note generali (opzionale)"
-                  value={generalNotes}
-                  onChange={(e) => setGeneralNotes(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
-                  rows={2}
-                />
+    {/* TELEFONO */}
+    <div>
+      <label className="block text-xs font-semibold text-slate-300 mb-1">
+        Numero di telefono *
+      </label>
 
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold p-3 rounded-lg text-xs transition uppercase tracking-wider"
-                >
-                  {submitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
-                </button>
-              </form>
+      <input
+        type="tel"
+        required
+        value={customerPhone}
+        onChange={(e) => setCustomerPhone(e.target.value)}
+        placeholder="Inserisci il numero di telefono"
+        autoComplete="tel"
+        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+      />
+    </div>
+
+    {/* EMAIL */}
+    <div>
+      <label className="block text-xs font-semibold text-slate-300 mb-1">
+        Email *
+      </label>
+
+      <input
+        type="email"
+        required
+        value={customerEmail}
+        onChange={(e) => setCustomerEmail(e.target.value)}
+        placeholder="Inserisci la tua email"
+        autoComplete="email"
+        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+      />
+
+      <p className="text-[10px] text-slate-500 mt-1">
+        Ti invieremo la conferma dell'ordine a questo indirizzo.
+      </p>
+    </div>
+
+  </div>
+
+  {/* TIPO ORDINE + ORARIO */}
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+    <div>
+      <label className="block text-xs font-semibold text-slate-300 mb-1">
+        Tipo di ordine
+      </label>
+
+      <select
+        value={orderType}
+        onChange={(e) =>
+          setOrderType(e.target.value as 'takeaway' | 'delivery')
+        }
+        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+      >
+        <option value="takeaway">
+          Ritiro in sede (Asporto)
+        </option>
+
+        <option value="delivery">
+          Consegna a domicilio
+        </option>
+      </select>
+    </div>
+
+    <div>
+      <label className="block text-xs font-semibold text-slate-300 mb-1">
+        Orario
+      </label>
+
+      <input
+        type="time"
+        value={pickupTime}
+        onChange={(e) => setPickupTime(e.target.value)}
+        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+      />
+    </div>
+
+  </div>
+
+  {/* NOTE */}
+  <div>
+    <label className="block text-xs font-semibold text-slate-300 mb-1">
+      Note
+    </label>
+
+    <textarea
+      placeholder="Note generali (opzionale)"
+      value={generalNotes}
+      onChange={(e) => setGeneralNotes(e.target.value)}
+      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+      rows={2}
+    />
+  </div>
+
+  {/* PULSANTE */}
+  <button
+    type="submit"
+    disabled={submitting}
+    className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold p-3 rounded-lg text-xs transition uppercase tracking-wider"
+  >
+    {submitting
+      ? 'Invio in corso...'
+      : 'Conferma ed Invia Ordine'}
+  </button>
+
+</form>
             </div>
           )}
         </div>
