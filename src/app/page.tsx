@@ -154,16 +154,20 @@ function PublicPageContent() {
     });
   };
 
+  // Validazione telefono uniforme: almeno 10 cifre
   const isValidPhone = (phone: string) => {
     const cleanPhone = phone.replace(/[\s\-\(\)\+]/g, '');
-    return /^\d{8,15}$/.test(cleanPhone);
+    return /^\d{10,15}$/.test(cleanPhone);
   };
 
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
 
-    if (!isValidPhone(customerPhone)) return;
+    if (!isValidPhone(customerPhone)) {
+      alert('Inserisci un numero di telefono valido di almeno 10 cifre!');
+      return;
+    }
     if (!customerEmail) { alert('Inserisci un indirizzo email valido!'); return; }
     if (!pickupTime) { alert('Seleziona un orario valido.'); return; }
 
@@ -243,12 +247,15 @@ function PublicPageContent() {
       return;
     }
 
+    if (customerPhone && !isValidPhone(customerPhone)) {
+      alert('Inserisci un numero di telefono valido di almeno 10 cifre!');
+      return;
+    }
+
     if (!resTime) {
       alert('Seleziona un orario valido per la prenotazione.');
       return;
     }
-
-    if (customerPhone && !isValidPhone(customerPhone)) return;
 
     setIsSubmitting(true);
 
@@ -385,7 +392,6 @@ function PublicPageContent() {
           )}
         </header>
 
-        {/* CAROSELLO ORIZZONTALE CON SCORCIO DELLE ALTRE SLIDE */}
         {promotions.length > 0 && (
           <div className="space-y-2">
             <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest block px-1">Le Nostre Promozioni</span>
@@ -678,7 +684,7 @@ function PublicPageContent() {
                   />
                   <input
                     type="tel"
-                    placeholder="Numero di telefono *"
+                    placeholder="Numero di telefono (min. 10 cifre) *"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                     className={`w-full bg-slate-900 border rounded-lg p-2.5 text-xs text-white transition ${
@@ -696,6 +702,7 @@ function PublicPageContent() {
                   />
 
                   <div className="grid grid-cols-2 gap-2 text-xs">
+                    {/* INIBIZIONE DATE PASSATE APPLICATA ANCHE ALL'ORDINE */}
                     <input
                       type="date"
                       min={todayStr}
@@ -749,7 +756,7 @@ function PublicPageContent() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 type="tel"
-                placeholder="Telefono"
+                placeholder="Telefono (min. 10 cifre)"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 className={`w-full bg-slate-900 border rounded-lg p-2.5 text-white ${
