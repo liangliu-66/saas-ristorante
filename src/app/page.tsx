@@ -79,10 +79,15 @@ function PublicPageContent() {
           const defaultOrderSlots = restData.order_time_slots;
           if (defaultOrderSlots && Array.isArray(defaultOrderSlots) && defaultOrderSlots.length > 0) {
             setPickupTime(defaultOrderSlots[0]);
+          } else {
+            setPickupTime('19:30');
           }
+
           const defaultResSlots = restData.reservation_time_slots;
           if (defaultResSlots && Array.isArray(defaultResSlots) && defaultResSlots.length > 0) {
             setResTime(defaultResSlots[0]);
+          } else {
+            setResTime('19:00');
           }
         }
 
@@ -170,6 +175,7 @@ function PublicPageContent() {
 
     if (!isValidPhone(customerPhone)) return;
     if (!customerEmail) { alert('Inserisci un indirizzo email valido!'); return; }
+    if (!pickupTime) { alert('Seleziona un orario valido.'); return; }
 
     setIsSubmitting(true);
 
@@ -247,6 +253,11 @@ function PublicPageContent() {
       return;
     }
 
+    if (!resTime) {
+      alert('Seleziona un orario valido per la prenotazione.');
+      return;
+    }
+
     if (customerPhone && !isValidPhone(customerPhone)) return;
 
     setIsSubmitting(true);
@@ -269,7 +280,6 @@ function PublicPageContent() {
     setIsSubmitting(false);
 
     if (!error) {
-      // Se l'utente ha inserito l'email, inviamo la conferma automatica
       if (resEmail) {
         try {
           await fetch('/api/notify-order', {
@@ -306,7 +316,6 @@ function PublicPageContent() {
     }
   };
 
-  // Funzioni per filtrare gli slot orari da Supabase rimuovendo quelli passati se la data è oggi
   const getAvailableTimeSlots = (selectedDate: string) => {
     const customSlots = restaurant?.order_time_slots;
     const slots = (customSlots && Array.isArray(customSlots) && customSlots.length > 0)
@@ -343,6 +352,19 @@ function PublicPageContent() {
 
   const timeSlots = getAvailableTimeSlots(orderDate);
   const reservationTimeSlots = getAvailableReservationTimeSlots(resDate);
+
+  // Sincronizza il valore selezionato se lo slot corrente non è più disponibile nel giorno scelto
+  useEffect(() => {
+    if (timeSlots.length > 0 && !timeSlots.includes(pickupTime)) {
+      setPickupTime(timeSlots[0]);
+    }
+  }, [orderDate, timeSlots, pickupTime]);
+
+  useEffect(() => {
+    if (reservationTimeSlots.length > 0 && !reservationTimeSlots.includes(resTime)) {
+      setResTime(reservationTimeSlots[0]);
+    }
+  }, [resDate, reservationTimeSlots, resTime]);
 
   const allowTakeaway = restaurant?.allow_takeaway ?? true;
   const allowDelivery = restaurant?.allow_delivery ?? true;
