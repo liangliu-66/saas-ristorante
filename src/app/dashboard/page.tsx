@@ -390,7 +390,7 @@ export default function LiveDashboardPage() {
             )}
 
             {/* Riquadro Data e Ora */}
-            <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-3 py-1 rounded-md text-xs font-mono font-bold text-slate-200">
+            <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-3 py-1 rounded-md text-xs font-bold text-slate-200">
               <span>{item.date}</span>
               <span className="text-slate-500">|</span>
               <span>{item.time}</span>
@@ -441,7 +441,7 @@ export default function LiveDashboardPage() {
         </div>
 
         <div className="space-y-2 pt-2 border-t border-slate-800/80">
-          <div className="text-sm text-slate-300 font-mono flex flex-wrap items-center gap-4">
+          <div className="text-sm text-slate-300 flex flex-wrap items-center gap-4">
             <span>Tel: {item.customer_phone || 'N/D'}</span>
             {item.customer_email && <span>Email: {item.customer_email}</span>}
           </div>
@@ -461,9 +461,9 @@ export default function LiveDashboardPage() {
             <div className="flex justify-between items-center border-b border-slate-800/80 pb-1.5 text-xs">
               <div className="flex items-center gap-2">
                 <span className="uppercase tracking-wider text-slate-400 font-bold">Comanda:</span>
-                {createdAtFormatted && <span className="text-amber-400 font-mono font-medium text-xs">({createdAtFormatted})</span>}
+                {createdAtFormatted && <span className="text-amber-400 font-medium text-xs">({createdAtFormatted})</span>}
               </div>
-              {item.total_amount && <span className="font-mono text-emerald-400 font-bold text-sm">Totale: €{Number(item.total_amount).toFixed(2)}</span>}
+              {item.total_amount && <span className="text-emerald-400 font-bold text-sm">Totale: €{Number(item.total_amount).toFixed(2)}</span>}
             </div>
             <div className="divide-y divide-slate-800/40">
               {item.items.map((it, idx) => (
@@ -472,7 +472,7 @@ export default function LiveDashboardPage() {
                     <span className="font-semibold text-white">{it.quantity}x {it.name}</span>
                     {it.itemNote && <span className="text-slate-300 text-xs block italic">Note: {it.itemNote}</span>}
                   </div>
-                  {it.price && <span className="text-slate-400 font-mono text-xs">€{(it.price * it.quantity).toFixed(2)}</span>}
+                  {it.price && <span className="text-slate-400 text-xs">€{(it.price * it.quantity).toFixed(2)}</span>}
                 </div>
               ))}
             </div>
@@ -483,7 +483,7 @@ export default function LiveDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-serif flex flex-col md:flex-row relative">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col md:flex-row relative">
       
       {/* HEADER MOBILE COMPATTO */}
       <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between sticky top-0 z-50">
@@ -599,7 +599,7 @@ export default function LiveDashboardPage() {
                 <button
                   key={dateStr}
                   onClick={() => setSelectedDate(dateStr)}
-                  className={`px-3 py-1.5 rounded-lg font-mono font-bold border transition text-xs ${
+                  className={`px-3 py-1.5 rounded-lg font-bold border transition text-xs ${
                     selectedDate === dateStr 
                       ? 'bg-amber-500 text-slate-950 border-amber-400 shadow' 
                       : 'bg-slate-900 text-amber-300 border-slate-700 hover:border-amber-500/60'
@@ -622,7 +622,7 @@ export default function LiveDashboardPage() {
               }`}
             >
               <span>Ordini</span>
-              <span className="bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-md text-xs font-mono font-black shadow-sm">
+              <span className="bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-md text-xs font-black shadow-sm">
                 {ordersList.filter(o => o.date === selectedDate).length}
               </span>
             </button>
@@ -634,7 +634,7 @@ export default function LiveDashboardPage() {
               }`}
             >
               <span>Prenotazioni</span>
-              <span className="bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-md text-xs font-mono font-black shadow-sm">
+              <span className="bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-md text-xs font-black shadow-sm">
                 {reservationsList.filter(r => r.date === selectedDate).length}
               </span>
             </button>
@@ -670,7 +670,7 @@ export default function LiveDashboardPage() {
             className={`px-3.5 py-2.5 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-2.5 ${statusFilter === 'all' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             <span>Tutti</span>
-            <span className="text-xs font-mono font-bold bg-slate-700 text-white px-2.5 py-0.5 rounded-md">
+            <span className="text-xs font-bold bg-slate-700 text-white px-2.5 py-0.5 rounded-md">
               {dateFilteredList.length}
             </span>
           </button>
@@ -679,7 +679,7 @@ export default function LiveDashboardPage() {
             className={`px-3.5 py-2.5 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-2.5 ${statusFilter === 'pending' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             <span>Da Confermare</span>
-            <span className="text-xs font-mono font-bold bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-md">
+            <span className="text-xs font-bold bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-md">
               {dateFilteredList.filter(i => i.status === 'pending').length}
             </span>
           </button>
@@ -688,7 +688,7 @@ export default function LiveDashboardPage() {
             className={`px-3.5 py-2.5 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-2.5 ${statusFilter === 'confirmed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             <span>In Corso</span>
-            <span className="text-xs font-mono font-bold bg-blue-600 text-white px-2.5 py-0.5 rounded-md">
+            <span className="text-xs font-bold bg-blue-600 text-white px-2.5 py-0.5 rounded-md">
               {dateFilteredList.filter(i => ['confirmed', 'preparing', 'ready'].includes(i.status)).length}
             </span>
           </button>
@@ -697,7 +697,7 @@ export default function LiveDashboardPage() {
             className={`px-3.5 py-2.5 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-2.5 ${statusFilter === 'completed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             <span>Completati</span>
-            <span className="text-xs font-mono font-bold bg-emerald-600 text-white px-2.5 py-0.5 rounded-md">
+            <span className="text-xs font-bold bg-emerald-600 text-white px-2.5 py-0.5 rounded-md">
               {dateFilteredList.filter(i => i.status === 'completed').length}
             </span>
           </button>
@@ -706,7 +706,7 @@ export default function LiveDashboardPage() {
             className={`px-3.5 py-2.5 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-2.5 ${statusFilter === 'cancelled' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             <span>Annullati</span>
-            <span className="text-xs font-mono font-bold bg-red-600 text-white px-2.5 py-0.5 rounded-md">
+            <span className="text-xs font-bold bg-red-600 text-white px-2.5 py-0.5 rounded-md">
               {dateFilteredList.filter(i => i.status === 'cancelled').length}
             </span>
           </button>
