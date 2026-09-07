@@ -373,28 +373,28 @@ function PublicPageContent() {
   if (loading) return <div className="bg-slate-900 min-h-screen text-slate-400 p-8 text-xs">Caricamento...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white pb-24">
+    <div className="min-h-screen bg-slate-900 text-white pb-28">
       <div className="max-w-xl mx-auto p-4 space-y-6">
         
         <header className="text-center space-y-3 pt-4">
-  <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">
-    {restaurant?.name || 'NOM SUSHI VIBES'}
-  </h1>
+          <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">
+            {restaurant?.name || 'NOM SUSHI VIBES'}
+          </h1>
 
-  <div className="flex justify-center">
-    <img 
-      src={restaurant?.logo_url || '/logo.png'} 
-      alt={restaurant?.name || 'Logo'} 
-      className="w-40 h-40 object-contain rounded-2xl bg-slate-800 p-2 border border-slate-700 shadow-md"
-    />
-  </div>
+          <div className="flex justify-center">
+            <img 
+              src={restaurant?.logo_url || '/logo.png'} 
+              alt={restaurant?.name || 'Logo'} 
+              className="w-40 h-40 object-contain rounded-2xl bg-slate-800 p-2 border border-slate-700 shadow-md"
+            />
+          </div>
 
-  {restaurant?.description && (
-    <p className="text-xs text-slate-400 max-w-sm mx-auto whitespace-pre-line leading-relaxed">
-      {restaurant.description}
-    </p>
-  )}
-</header>
+          {restaurant?.description && (
+            <p className="text-xs text-slate-400 max-w-sm mx-auto whitespace-pre-line leading-relaxed">
+              {restaurant.description}
+            </p>
+          )}
+        </header>
 
         {promotions.length > 0 && (
           <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 p-4 rounded-xl shadow-lg transition-all">
@@ -788,6 +788,28 @@ function PublicPageContent() {
         )}
 
       </div>
+
+      {/* Barra Sticky in basso per il carrello */}
+      {Object.keys(cart).length > 0 && activeTab === 'order' && !submittedReceipt && (
+        <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-800 p-4 shadow-2xl z-50 animate-slide-up">
+          <div className="max-w-xl mx-auto flex items-center justify-between gap-4">
+            <div>
+              <span className="text-[10px] text-slate-400 block uppercase font-mono">
+                Carrello ({Object.values(cart).reduce((acc, item) => acc + item.quantity, 0)} prodotti)
+              </span>
+              <span className="text-sm font-bold text-amber-400 font-mono">€{finalTotal.toFixed(2)}</span>
+            </div>
+            <button
+              onClick={() => {
+                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+              }}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider shadow-lg transition-transform active:scale-95"
+            >
+              Visualizza Carrello & Procedi
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
