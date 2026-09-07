@@ -88,6 +88,10 @@ export default function MenuPage() {
           .eq('slug', slug)
           .maybeSingle();
 
+        console.log("DATI RISTORANTE DA SUPABASE:", restData);
+        console.log("ORARI ORDINI TROVATI:", restData?.order_time_slots);
+        console.log("ORARI PRENOTAZIONI TROVATI:", restData?.reservation_time_slots);
+
         if (restError || !restData) {
           setLoading(false);
           return;
@@ -97,7 +101,6 @@ export default function MenuPage() {
         setIsOwnerView(false);
         await fetchPublicData(restData.id);
 
-        // Imposta il primo orario ordine disponibile come default se esiste
         if (restData.order_time_slots && restData.order_time_slots.length > 0) {
           setPickupTime(restData.order_time_slots[0]);
         }
