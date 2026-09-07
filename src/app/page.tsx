@@ -643,10 +643,23 @@ function PublicPageContent() {
                   ))}
                 </div>
 
-                <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-xs space-y-1 font-mono">
+                {/* RIEPILOGO PREZZI E SCONTO VISIBILE AL CLIENTE */}
+                <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-xs space-y-2 font-mono">
                   <div className="flex justify-between text-slate-400">
-                    <span>Totale:</span>
-                    <span>€{finalTotal.toFixed(2)}</span>
+                    <span>Subtotale:</span>
+                    <span>€{rawTotal.toFixed(2)}</span>
+                  </div>
+
+                  {discountPercent > 0 && (
+                    <div className="flex justify-between text-amber-400 font-bold bg-amber-500/10 p-2 rounded border border-amber-500/20">
+                      <span>🎉 Sconto del {discountPercent}% applicato!</span>
+                      <span>-€{discountAmount.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-white font-bold text-sm pt-2 border-t border-slate-700">
+                    <span>Totale Finale:</span>
+                    <span className="text-amber-400">€{finalTotal.toFixed(2)}</span>
                   </div>
                 </div>
 

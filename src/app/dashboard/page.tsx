@@ -34,6 +34,9 @@ export default function LiveDashboardPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
   const [selectedDate, setSelectedDate] = useState<string>(todayDate);
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+  
+  // Stato per la gestione della sidebar mobile a comparsa
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Gestione Audio
   const [audioEnabled, setAudioEnabled] = useState(false);
@@ -418,12 +421,52 @@ export default function LiveDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col md:flex-row">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col md:flex-row relative">
       
-      {/* SIDEBAR LATERALE */}
-      <aside className="w-full md:w-64 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 p-5 flex flex-col justify-between shrink-0">
-        <div className="space-y-6">
-          <div>
+      {/* HEADER MOBILE COMPATTO (FISSO IN ALTO) */}
+      <div className="md:hidden bg-slate-900 border-b border-slate-800 p-3.5 flex items-center justify-between sticky top-0 z-50">
+        <div>
+          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block">Dashboard Live</span>
+          <h1 className="text-sm font-black tracking-tight text-white truncate max-w-[190px]">{restaurant?.name}</h1>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Tasto rapido Audio Mobile */}
+          <button
+            onClick={toggleAudio}
+            className={`p-2 rounded-xl border text-xs font-bold ${
+              audioEnabled ? 'bg-slate-800 text-emerald-400 border-slate-700' : 'bg-slate-800 text-slate-400 border-slate-700'
+            }`}
+          >
+            {audioEnabled ? '🔊' : '🔇'}
+          </button>
+
+          {/* Tasto Apertura Menu Laterale Mobile */}
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-xl border border-slate-700 text-xs font-bold"
+          >
+            {isSidebarOpen ? '✕ Chiudi' : '☰ Menu'}
+          </button>
+        </div>
+      </div>
+
+      {/* OVERLAY SCURO PER CHIUDERE IL MENU MOBILE AL TOCCO ESTERNO */}
+      {isSidebarOpen && (
+        <div 
+          onClick={() => setIsSidebarOpen(false)}
+          className="fixed inset-0 bg-black/60 z-30 md:hidden backdrop-blur-xs transition-opacity"
+        />
+      )}
+
+      {/* SIDEBAR LATERALE (COMPATTA E A SCOMPARSA SU MOBILE, FISSA SU DESKTOP) */}
+      <aside 
+        className={`w-72 md:w-64 bg-slate-900 border-r border-slate-800 p-5 flex flex-col justify-between shrink-0 transition-transform duration-300 ease-in-out fixed md:static inset-y-0 left-0 z-40 ${
+          isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
+        }`}
+      >
+        <div className="space-y-6 pt-12 md:pt-0">
+          <div className="hidden md:block">
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">Dashboard Live</span>
             <h1 className="text-lg font-black tracking-tight text-white mt-0.5 truncate">{restaurant?.name}</h1>
           </div>
@@ -432,21 +475,24 @@ export default function LiveDashboardPage() {
             <Link 
               href={restaurant?.slug ? `/menu/${restaurant.slug}` : '/dashboard/menu'} 
               target="_blank"
-              className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
+              onClick={() => setIsSidebarOpen(false)}
+              className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
             >
               <span>Visualizza Menu Pubblico</span>
             </Link>
 
             <Link 
               href="/dashboard/promotions" 
-              className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
+              onClick={() => setIsSidebarOpen(false)}
+              className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
             >
               <span>Gestione Promozioni</span>
             </Link>
 
             <Link 
               href="/dashboard/settings" 
-              className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
+              onClick={() => setIsSidebarOpen(false)}
+              className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
             >
               <span>Impostazioni Ristorante</span>
             </Link>
@@ -456,7 +502,7 @@ export default function LiveDashboardPage() {
         <div className="space-y-3 pt-6 border-t border-slate-800 text-xs">
           <button
             onClick={toggleAudio}
-            className={`w-full py-2.5 px-3 rounded-xl font-bold border transition text-center ${
+            className={`w-full py-3 px-3 rounded-xl font-bold border transition text-center hidden md:block ${
               audioEnabled 
                 ? 'bg-slate-800 text-emerald-400 border-slate-700 hover:bg-slate-700' 
                 : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
@@ -467,7 +513,7 @@ export default function LiveDashboardPage() {
 
           <button 
             onClick={handleLogout} 
-            className="w-full bg-slate-800 hover:bg-slate-700 text-red-400 font-semibold py-2.5 rounded-xl border border-slate-700 transition-colors text-center"
+            className="w-full bg-slate-800 hover:bg-slate-700 text-red-400 font-semibold py-3 rounded-xl border border-slate-700 transition-colors text-center"
           >
             Esci dall'Account
           </button>
@@ -475,7 +521,7 @@ export default function LiveDashboardPage() {
       </aside>
 
       {/* CONTENUTO PRINCIPALE */}
-      <main className="flex-1 p-4 sm:p-6 space-y-5 overflow-y-auto">
+      <main className="flex-1 p-3 sm:p-6 space-y-4 overflow-y-auto">
         
         {/* Banner Allarme Attivo */}
         {isAlarmPlaying && (
@@ -486,28 +532,28 @@ export default function LiveDashboardPage() {
         )}
 
         {/* Toolbar Superiore: Tabs e Filtro Data */}
-        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex gap-2 text-xs">
+        <div className="bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="grid grid-cols-2 sm:flex gap-2 text-xs">
             <button
               onClick={() => setActiveTab('orders')}
-              className={`px-4 py-2.5 rounded-xl font-bold transition-all ${
+              className={`px-3 sm:px-4 py-2.5 rounded-xl font-bold transition-all text-center ${
                 activeTab === 'orders' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              Ordini Online ({ordersList.filter(o => o.date === selectedDate).length})
+              Ordini ({ordersList.filter(o => o.date === selectedDate).length})
             </button>
 
             <button
               onClick={() => setActiveTab('reservations')}
-              className={`px-4 py-2.5 rounded-xl font-bold transition-all ${
+              className={`px-3 sm:px-4 py-2.5 rounded-xl font-bold transition-all text-center ${
                 activeTab === 'reservations' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              Prenotazioni Tavolo ({reservationsList.filter(r => r.date === selectedDate).length})
+              Prenotazioni ({reservationsList.filter(r => r.date === selectedDate).length})
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between sm:justify-start gap-2">
             <span className="text-xs text-slate-400 font-medium">Data:</span>
             <input
               type="date"
@@ -527,34 +573,34 @@ export default function LiveDashboardPage() {
         </div>
 
         {/* Filtri Rapidi per Stato */}
-        <div className="flex flex-wrap gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800 text-xs">
+        <div className="flex overflow-x-auto pb-1 sm:pb-0 gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800 text-xs no-scrollbar">
           <button
             onClick={() => setStatusFilter('all')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors ${statusFilter === 'all' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'all' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             Tutti ({dateFilteredList.length})
           </button>
           <button
             onClick={() => setStatusFilter('pending')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors ${statusFilter === 'pending' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'pending' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             Da Confermare ({dateFilteredList.filter(i => i.status === 'pending').length})
           </button>
           <button
             onClick={() => setStatusFilter('confirmed')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors ${statusFilter === 'confirmed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'confirmed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             In Corso ({dateFilteredList.filter(i => ['confirmed', 'preparing', 'ready'].includes(i.status)).length})
           </button>
           <button
             onClick={() => setStatusFilter('completed')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors ${statusFilter === 'completed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'completed' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             Completati ({dateFilteredList.filter(i => i.status === 'completed').length})
           </button>
           <button
             onClick={() => setStatusFilter('cancelled')}
-            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors ${statusFilter === 'cancelled' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap ${statusFilter === 'cancelled' ? 'bg-slate-800 text-white font-bold border border-slate-700' : 'text-slate-400 hover:text-white'}`}
           >
             Annullati ({dateFilteredList.filter(i => i.status === 'cancelled').length})
           </button>
