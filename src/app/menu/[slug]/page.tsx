@@ -88,10 +88,6 @@ export default function MenuPage() {
           .eq('slug', slug)
           .maybeSingle();
 
-        console.log("DATI RISTORANTE DA SUPABASE:", restData);
-        console.log("ORARI ORDINI TROVATI:", restData?.order_time_slots);
-        console.log("ORARI PRENOTAZIONI TROVATI:", restData?.reservation_time_slots);
-
         if (restError || !restData) {
           setLoading(false);
           return;
@@ -154,7 +150,6 @@ export default function MenuPage() {
     if (prodData) setProducts(prodData);
   };
 
-  // Generatore di slot orari per Ordini (Asporto / Delivery) dal database
   const getAvailableTimeSlots = () => {
     const customSlots = restaurant?.order_time_slots;
     if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
@@ -163,7 +158,6 @@ export default function MenuPage() {
     return [];
   };
 
-  // Generatore di slot orari per Prenotazioni Tavoli dal database
   const getAvailableReservationTimeSlots = () => {
     const customSlots = restaurant?.reservation_time_slots;
     if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
@@ -554,11 +548,6 @@ export default function MenuPage() {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">Orario di ritiro/consegna *</label>
-                    
-                    <div className="text-xs text-red-400">
-                      DEBUG ORARI: {JSON.stringify(restaurant?.order_time_slots)}
-                    </div>
-                    
                     <select
                       required
                       value={pickupTime}

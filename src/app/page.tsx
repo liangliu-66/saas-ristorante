@@ -28,17 +28,15 @@ function PublicPageContent() {
 
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
 
   const [orderDate, setOrderDate] = useState(todayStr);
-  const [pickupTime, setPickupTime] = useState('19:30');
+  const [pickupTime, setPickupTime] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
 
   // Stato Prenotazione Tavolo
   const [resEmail, setResEmail] = useState('');
   const [resDate, setResDate] = useState(todayStr);
-  const [resTime, setResTime] = useState('20:00');
+  const [resTime, setResTime] = useState('');
   const [resGuests, setResGuests] = useState(2);
   const [resNotes, setResNotes] = useState('');
 
@@ -73,6 +71,14 @@ function PublicPageContent() {
           
           if (restData.allow_takeaway === false && restData.allow_delivery === true) {
             setOrderType('delivery');
+          }
+
+          // Imposta i default iniziali basati sui database slots se esistono
+          if (restData.order_time_slots && restData.order_time_slots.length > 0) {
+            setPickupTime(restData.order_time_slots[0]);
+          }
+          if (restData.reservation_time_slots && restData.reservation_time_slots.length > 0) {
+            setResTime(restData.reservation_time_slots[0]);
           }
         }
 
@@ -273,27 +279,25 @@ function PublicPageContent() {
     }
   };
 
-  const generateTimeSlots = (selectedDate: string) => {
-    const slots = [];
-    for (let h = 11; h <= 23; h++) {
-      for (let m = 0; m < 60; m += 30) {
-        const hourStr = h.toString().padStart(2, '0');
-        const minStr = m.toString().padStart(2, '0');
-        const timeVal = `${hourStr}:${minStr}`;
-
-        if (selectedDate === todayStr) {
-          if (h < currentHour || (h === currentHour && m <= currentMinute)) {
-            continue;
-          }
-        }
-        slots.push(timeVal);
-      }
+  // Funzioni che pescano ESCLUSIVAMENTE gli array personalizzati da Supabase
+  const getAvailableTimeSlots = () => {
+    const customSlots = restaurant?.order_time_slots;
+    if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
+      return customSlots.sort();
     }
-    if (slots.length === 0) slots.push("23:30");
-    return slots;
+    return ["19:30"]; // Fallback di sicurezza se l'array è vuoto
   };
 
-  const timeSlots = generateTimeSlots(activeTab === 'order' ? orderDate : resDate);
+  const getAvailableReservationTimeSlots = () => {
+    const customSlots = restaurant?.reservation_time_slots;
+    if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
+      return customSlots.sort();
+    }
+    return ["20:00"]; // Fallback di sicurezza se l'array è vuoto
+  };
+
+  const timeSlots = getAvailableTimeSlots();
+  const reservationTimeSlots = getAvailableReservationTimeSlots();
 
   const allowTakeaway = restaurant?.allow_takeaway ?? true;
   const allowDelivery = restaurant?.allow_delivery ?? true;
@@ -633,7 +637,7 @@ function PublicPageContent() {
                 className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white"
                 required
               >
-                {timeSlots.map((slot) => (
+                {reservationTimeSlots.map((slot) => (
                   <option key={slot} value={slot}>{slot}</option>
                 ))}
               </select>
