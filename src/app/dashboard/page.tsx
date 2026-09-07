@@ -263,31 +263,38 @@ export default function LiveDashboardPage() {
             }
             return o;
           });
-
-          if (!nextList.some((o) => o.status === 'pending' && o.date === todayDate)) {
-            setIsAlarmPlaying(false);
-          }
           return nextList;
         });
       } else {
         setReservationsList((prev) => prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r)));
       }
 
-      if (targetItem && type === 'order') {
-        fetch('/api/notify-order', {
+      // <--- INCOLLA QUI IL FETCH PER L'API --->
+      // Trova l'elemento corrente (sia esso ordine o prenotazione) per recuperarne i dati
+      const currentItem = type === 'order' 
+        ? ordersList.find(o => o.id === id) 
+        : reservationsList.find(r => r.id === id);
+
+      if (currentItem) {
+        await fetch('/api/notify-order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            orderId: targetItem.id,
-            customerPhone: targetItem.customer_phone,
-            customerEmail: targetItem.customer_email,
-            customerName: targetItem.customer_name,
-            newStatus,
-            orderType: targetItem.order_type,
-            pickupTime: targetItem.time,
+            orderId: currentItem.id,
+            customerPhone: currentItem.customer_phone,
+            customerEmail: currentItem.customer_email,
+            customerName: currentItem.customer_name,
+            newStatus: newStatus,
+            orderType: currentItem.order_type,
+            pickupTime: currentItem.time,
+            type: type, // 'order' oppure 'reservation'
+            restaurantName: restaurant?.name,
+            totalAmount: currentItem.total_amount,
           }),
-        }).catch(() => {});
+        }).catch((err) => console.error('Errore chiamata API notifiche:', err));
       }
+      // ----------------------------------------
+
     } else {
       alert(`Errore aggiornamento: ${error.message}`);
     }
