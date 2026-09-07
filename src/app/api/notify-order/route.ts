@@ -3,7 +3,7 @@ import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const SENDER_EMAIL = 'NOM SUSHI VIBES <onboarding@resend.dev>';
+const SENDER_EMAIL = 'NOM SUSHI VIBES <ordini@nomsushi.shop>';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
