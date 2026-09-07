@@ -34,8 +34,8 @@ export default function LiveDashboardPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
   const [selectedDate, setSelectedDate] = useState<string>(todayDate);
   
-  // Stato per identificare se ci sono attività in date future (per l'indicatore)
-  const [futureDatesWithActivity, setFutureDatesWithActivity] = useState<string[]>([]);
+  // Memorizza solo le date future che hanno elementi PENDING (da confermare)
+  const [pendingFutureDates, setPendingFutureDates] = useState<string[]>([]);
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -87,7 +87,7 @@ export default function LiveDashboardPage() {
               };
               setOrdersList((prev) => {
                 const updated = [...prev, newOrd].sort((a, b) => (a.time > b.time ? 1 : -1));
-                updateFutureActivitiesCheck(updated, reservationsList);
+                updatePendingFutureCheck(updated, reservationsList);
                 return updated;
               });
               
@@ -100,7 +100,7 @@ export default function LiveDashboardPage() {
                 if (!updated.some((o) => o.status === 'pending' && o.date === todayDate)) {
                   setIsAlarmPlaying(false);
                 }
-                updateFutureActivitiesCheck(updated, reservationsList);
+                updatePendingFutureCheck(updated, reservationsList);
                 return updated;
               });
             }
@@ -123,7 +123,7 @@ export default function LiveDashboardPage() {
               };
               setReservationsList((prev) => {
                 const updated = [...prev, newRes].sort((a, b) => (a.time > b.time ? 1 : -1));
-                updateFutureActivitiesCheck(ordersList, updated);
+                updatePendingFutureCheck(ordersList, updated);
                 return updated;
               });
               
@@ -134,7 +134,7 @@ export default function LiveDashboardPage() {
             } else if (payload.eventType === 'UPDATE') {
               setReservationsList((prev) => {
                 const updated = prev.map((r) => (r.id === payload.new.id ? { ...r, ...payload.new as any, date: payload.new.reservation_date, time: payload.new.reservation_time || '12:00', type: 'reservation' } : r));
-                updateFutureActivitiesCheck(ordersList, updated);
+                updatePendingFutureCheck(ordersList, updated);
                 return updated;
               });
             }
@@ -151,19 +151,20 @@ export default function LiveDashboardPage() {
     init();
   }, [audioEnabled, router, supabase, todayDate]);
 
-  const updateFutureActivitiesCheck = (ords: OrderItem[], resrs: OrderItem[]) => {
+  // Filtra unicamente le date future con stato 'pending'
+  const updatePendingFutureCheck = (ords: OrderItem[], resrs: OrderItem[]) => {
     const datesSet = new Set<string>();
     ords.forEach((o) => {
-      if (o.date && o.date > todayDate && o.status !== 'cancelled' && o.status !== 'completed') {
+      if (o.date && o.date > todayDate && o.status === 'pending') {
         datesSet.add(o.date);
       }
     });
     resrs.forEach((r) => {
-      if (r.date && r.date > todayDate && r.status !== 'cancelled' && r.status !== 'completed') {
+      if (r.date && r.date > todayDate && r.status === 'pending') {
         datesSet.add(r.date);
       }
     });
-    setFutureDatesWithActivity(Array.from(datesSet).sort());
+    setPendingFutureDates(Array.from(datesSet).sort());
   };
 
   const getAudioContext = () => {
@@ -259,7 +260,7 @@ export default function LiveDashboardPage() {
       setReservationsList(formattedResrs);
     }
 
-    updateFutureActivitiesCheck(formattedOrders, formattedResrs);
+    updatePendingFutureCheck(formattedOrders, formattedResrs);
   };
 
   useEffect(() => {
@@ -291,7 +292,7 @@ export default function LiveDashboardPage() {
         setReservationsList(updatedResrs);
       }
 
-      updateFutureActivitiesCheck(updatedOrders, updatedResrs);
+      updatePendingFutureCheck(updatedOrders, updatedResrs);
 
       const currentItem = type === 'order' 
         ? ordersList.find(o => o.id === id) 
@@ -558,15 +559,15 @@ export default function LiveDashboardPage() {
           </div>
         )}
 
-        {/* INDICATORE VISIVO PER DATE FUTURE CON ATTIVITÀ */}
-        {futureDatesWithActivity.length > 0 && (
+        {/* INDICATORE VISIVO SOLO PER ATTIVITÀ FUTURE IN ATTESA (PENDING) */}
+        {pendingFutureDates.length > 0 && (
           <div className="bg-amber-500/10 border border-amber-500/40 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse shrink-0"></span>
-              <span className="font-bold text-amber-400">Ci sono ordini o prenotazioni future in arrivo:</span>
+              <span className="font-bold text-amber-400">Ci sono ordini o prenotazioni future da confermare:</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {futureDatesWithActivity.map((dateStr) => (
+              {pendingFutureDates.map((dateStr) => (
                 <button
                   key={dateStr}
                   onClick={() => setSelectedDate(dateStr)}
@@ -614,7 +615,7 @@ export default function LiveDashboardPage() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-semibold focus:outline-none focus:border-slate-600"
               />
-              {futureDatesWithActivity.length > 0 && (
+              {pendingFutureDates.length > 0 && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse border-2 border-slate-950" />
               )}
             </div>
