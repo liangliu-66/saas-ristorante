@@ -376,14 +376,25 @@ function PublicPageContent() {
     <div className="min-h-screen bg-slate-900 text-white pb-24">
       <div className="max-w-xl mx-auto p-4 space-y-6">
         
-        <header className="text-center space-y-2 pt-4">
-          <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">{restaurant?.name || 'NOM SUSHI VIBES'}</h1>
-          {restaurant?.description && (
-            <p className="text-xs text-slate-400 max-w-sm mx-auto whitespace-pre-line leading-relaxed">
-              {restaurant.description}
-            </p>
-          )}
-        </header>
+        <header className="text-center space-y-3 pt-4">
+  <h1 className="text-2xl font-black text-amber-500 tracking-wider uppercase">
+    {restaurant?.name || 'NOM SUSHI VIBES'}
+  </h1>
+
+  <div className="flex justify-center">
+    <img 
+      src={restaurant?.logo_url || '/logo.png'} 
+      alt={restaurant?.name || 'Logo'} 
+      className="w-20 h-20 object-contain rounded-2xl bg-slate-800 p-2 border border-slate-700 shadow-md"
+    />
+  </div>
+
+  {restaurant?.description && (
+    <p className="text-xs text-slate-400 max-w-sm mx-auto whitespace-pre-line leading-relaxed">
+      {restaurant.description}
+    </p>
+  )}
+</header>
 
         {promotions.length > 0 && (
           <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 p-4 rounded-xl shadow-lg transition-all">
