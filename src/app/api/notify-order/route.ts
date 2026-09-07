@@ -2,88 +2,106 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const SENDER_EMAIL = 'Ristorante <onboarding@resend.dev>'; // Sostituisci con il tuo dominio verificato quando sei pronto
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { 
       orderId, 
-      customerPhone, 
       customerEmail, 
       customerName, 
       newStatus, 
-      orderType, 
-      pickupTime, 
-      type, 
+      type, // 'order' oppure 'reservation'
       restaurantName, 
-      totalAmount 
+      totalAmount,
+      pickupTime,
+      orderType,
+      items, // Array dei piatti ordinati
+      guests // Numero coperti per la prenotazione
     } = body;
 
-    const restName = restaurantName || 'Il Ristorante';
-
-    // 1. GESTIONE PRENOTAZIONI: Richiede solo l'email
-    if (type === 'reservation') {
-      if (newStatus === 'confirmed' && customerEmail) {
-        try {
-          await resend.emails.send({
-            from: `${restName} <onboarding@resend.dev>`,
-            to: customerEmail,
-            subject: `Conferma Prenotazione - ${restName}`,
-            html: `
-              <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-                <h2 style="color: #d97706;">Prenotazione Confermata!</h2>
-                <p>Gentile <strong>${customerName}</strong>,</p>
-                <p>Siamo lieti di confermare la tua prenotazione presso <strong>${restName}</strong>.</p>
-                <p>Ti aspettiamo!</p>
-              </div>
-            `,
-          });
-          console.log(`[RESEND EMAIL] Conferma prenotazione inviata a: ${customerEmail}`);
-        } catch (emailError) {
-          console.error('Errore invio email prenotazione:', emailError);
-        }
-      }
-      return NextResponse.json({ success: true, message: 'Notifica prenotazione elaborata.' });
+    if (!customerEmail) {
+      return NextResponse.json({ success: true, message: 'Email cliente non presente, invio saltato.' });
     }
 
-    // 2. GESTIONE ASPORTO / DELIVERY: Richiede sia telefono che email obbligatori
-    if (type === 'order' && newStatus === 'confirmed') {
-      if (!customerEmail || !customerPhone) {
-        return NextResponse.json({ 
-          success: false, 
-          message: 'Impossibile inviare l\'email: mancano il numero di telefono o l\'indirizzo email del cliente.' 
-        }, { status: 400 });
-      }
+    let subject = '';
+    let htmlContent = '';
 
-      try {
-        await resend.emails.send({
-          from: `${restName} <onboarding@resend.dev>`,
-          to: customerEmail,
-          subject: `Conferma Ordine (${orderType === 'delivery' ? 'Consegna' : 'Ritiro'}) - ${restName}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-              <h2 style="color: #d97706;">Ordine Confermato!</h2>
-              <p>Ciao <strong>${customerName}</strong>, il tuo ordine è stato confermato dal ristorante.</p>
-              <p><strong>Dettagli dell'ordine:</strong></p>
-              <ul>
-                <li>Tipologia: ${orderType === 'delivery' ? 'Consegna a domicilio' : 'Ritiro in sede'}</li>
-                <li>Orario previsto: ${pickupTime || 'N/D'}</li>
-                <li>Telefono di riferimento: ${customerPhone}</li>
-                <li>Totale: EUR ${totalAmount || '0.00'}</li>
-              </ul>
-              <p>Grazie per aver scelto ${restName}!</p>
-            </div>
-          `,
-        });
-        console.log(`[RESEND EMAIL] Riepilogo asporto inviato a: ${customerEmail}`);
-      } catch (emailError) {
-        console.error('Errore invio email asporto:', emailError);
+    // --- 1. GESTIONE ORDINE (Asporto / Delivery) ---
+    if (type === 'order') {
+      const formattedItemsHtml = items && Array.isArray(items) 
+        ? items.map((it: any) => `
+            <tr>
+              <td style="padding: 8px; border-bottom: 1px solid #eee;">${it.quantity}x ${it.name} ${it.itemNote ? `<br><small style="color: #666;">${it.itemNote}</small>` : ''}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">€${(Number(it.price || 0) * Number(it.quantity || 1)).toFixed(2)}</td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="2" style="padding: 8px;">Dettagli prodotti non disponibili</td></tr>';
+
+      if (newStatus === 'pending') {
+        subject = `Conferma Ricezione Ordine - ${restaurantName || 'Ristorante'}`;
+        htmlContent = `
+          <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #d97706; margin-top: 0;">Grazie per il tuo ordine, ${customerName}!</h2>
+            <p>Abbiamo ricevuto correttamente il tuo ordine in modalità <strong>${orderType === 'delivery' ? 'Consegna a domicilio' : 'Ritiro in sede'}</strong>.</p>
+            <p><strong>Orario previsto:</strong> ${pickupTime}</p>
+            
+            <h3 style="border-bottom: 2px solid #d97706; padding-bottom: 5px; margin-top: 20px;">Riepilogo Ordine</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              ${formattedItemsHtml}
+            </table>
+            
+            <p style="text-align: right; font-size: 16px; margin-top: 15px;"><strong>Totale: €${Number(totalAmount || 0).toFixed(2)}</strong></p>
+            <p style="color: #666; font-size: 12px; margin-top: 30px; text-align: center;">Ti invieremo un'altra email non appena il ristorante confermerà la preparazione.</p>
+          </div>
+        `;
+      } else if (newStatus === 'confirmed') {
+        subject = `Ordine Confermato! - ${restaurantName || 'Ristorante'}`;
+        htmlContent = `
+          <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #059669; margin-top: 0;">Il tuo ordine è stato confermato!</h2>
+            <p>Ciao <strong>${customerName}</strong>, il ristorante ha accettato il tuo ordine e ha iniziato a prepararlo.</p>
+            <p><strong>Orario:</strong> ${pickupTime}</p>
+            <p style="color: #666; font-size: 12px; margin-top: 30px; text-align: center;">Ti aspettiamo!</p>
+          </div>
+        `;
+      }
+    } 
+    
+    // --- 2. GESTIONE PRENOTAZIONE TAVOLO ---
+    else if (type === 'reservation') {
+      if (newStatus === 'pending') {
+        subject = `Conferma Richiesta Prenotazione Tavolo - ${restaurantName || 'Ristorante'}`;
+        htmlContent = `
+          <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #d97706; margin-top: 0;">Richiesta Prenotazione Ricevuta, ${customerName}!</h2>
+            <p>Abbiamo registrato la tua richiesta di prenotazione con i seguenti dati:</p>
+            <ul style="line-height: 1.6;">
+              <li><strong>Data e Ora:</strong> ${pickupTime}</li>
+              <li><strong>Numero Coperti:</strong> ${guests || 1} persone</li>
+            </ul>
+            <p style="color: #666; font-size: 12px; margin-top: 30px; text-align: center;">Il ristorante verificherà la disponibilità e ti contatterà per la conferma definitiva.</p>
+          </div>
+        `;
       }
     }
 
-    return NextResponse.json({ success: true, message: 'Notifica ordine elaborata con successo.' });
+    if (!htmlContent) {
+      return NextResponse.json({ success: true, message: 'Nessuna azione email richiesta per questo stato.' });
+    }
+
+    // Invio tramite Resend
+    const data = await resend.emails.send({
+      from: SENDER_EMAIL,
+      to: [customerEmail],
+      subject: subject,
+      html: htmlContent,
+    });
+
+    return NextResponse.json({ success: true, data });
   } catch (error: any) {
-    console.error('Errore generale API notifiche:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error('Errore invio email Resend:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
