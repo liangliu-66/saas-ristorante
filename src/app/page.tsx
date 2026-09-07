@@ -487,6 +487,13 @@ function PublicPageContent() {
                   <span className="font-bold text-white">{submittedReceipt.guests} persone</span>
                 </div>
 
+                {submittedReceipt.notes && (
+                  <div className="text-slate-300 pt-1 border-t border-slate-700">
+                    <span>Note: </span>
+                    <span className="text-amber-300">{submittedReceipt.notes}</span>
+                  </div>
+                )}
+
                 {submittedReceipt.customerEmail ? (
                   <div className="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg text-emerald-400 text-center font-sans text-xs mt-4">
                     Abbiamo registrato la tua prenotazione e inviato i dettagli a <strong>{submittedReceipt.customerEmail}</strong>.
@@ -790,6 +797,16 @@ function PublicPageContent() {
                 required
               />
             </div>
+
+            {/* CAMPO NOTE PER LA PRENOTAZIONE */}
+            <textarea
+              placeholder="Note o richieste particolari per il tavolo (es. seggiolone, allergie...)"
+              value={resNotes}
+              onChange={(e) => setResNotes(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+              rows={2}
+            />
+
             <button
               type="submit"
               disabled={isSubmitting}
