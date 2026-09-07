@@ -40,7 +40,7 @@ export default function MenuPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerEmail, setCustomerEmail] = useState(''); // <-- STATO EMAIL AGGIUNTO
   const [orderType, setOrderType] = useState<'takeaway' | 'delivery'>('takeaway');
   const [pickupTime, setPickupTime] = useState('19:30');
   const [generalNotes, setGeneralNotes] = useState('');
@@ -60,7 +60,6 @@ export default function MenuPage() {
 
   useEffect(() => {
     const init = async () => {
-      // Verifica se c'è un utente loggato proprietario
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session) {
@@ -72,7 +71,6 @@ export default function MenuPage() {
             .eq('user_id', user.id)
             .maybeSingle();
 
-          // Se siamo nella rotta del proprietario o gestiamo il suo ristorante
           if (restData && (!slug || restData.slug === slug)) {
             setRestaurant(restData);
             setIsOwnerView(true);
@@ -83,7 +81,6 @@ export default function MenuPage() {
         }
       }
 
-      // Altrimenti carica come vista pubblica tramite slug
       if (slug) {
         const { data: restData, error: restError } = await supabase
           .from('restaurants')
@@ -149,7 +146,6 @@ export default function MenuPage() {
     if (prodData) setProducts(prodData);
   };
 
-  // Funzioni carrello pubblico
   const addToCart = (product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
@@ -191,7 +187,7 @@ export default function MenuPage() {
       restaurant_id: restaurant.id,
       customer_name: customerName,
       customer_phone: customerPhone,
-      customer_email: customerEmail,
+      customer_email: customerEmail, // <-- SALVATAGGIO EMAIL NEL DB
       order_type: orderType,
       items: cart,
       total_amount: totalAmount,
@@ -201,22 +197,43 @@ export default function MenuPage() {
       status: 'pending',
     };
 
-    const { error } = await supabase
+    const { data: insertedOrder, error } = await supabase
       .from('orders')
       .insert([orderPayload])
       .select()
       .single();
 
-    if (!error) {
+    if (!error && insertedOrder) {
+      // Chiamata immediata a Resend per l'email di ricezione ordine
+      try {
+        await fetch('/api/notify-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: insertedOrder.id,
+            customerPhone: customerPhone,
+            customerEmail: customerEmail,
+            customerName: customerName,
+            newStatus: 'pending',
+            orderType: orderType,
+            pickupTime: pickupTime,
+            type: 'order',
+            restaurantName: restaurant?.name,
+            totalAmount: totalAmount,
+          }),
+        });
+      } catch (err) {
+        console.error('Errore invio email automatica:', err);
+      }
+
       setOrderSuccess(true);
       setCart([]);
     } else {
-      alert(`Errore invio ordine: ${error.message}`);
+      alert(`Errore invio ordine: ${error?.message}`);
     }
     setSubmitting(false);
   };
 
-  // Funzioni pannello admin
   const resetForm = () => {
     setEditingId(null);
     setName('');
@@ -361,7 +378,6 @@ export default function MenuPage() {
     );
   }
 
-  // --- VISTA SUCCESS INVIO ORDINE ---
   if (!isOwnerView && orderSuccess) {
     return (
       <div className="min-h-screen bg-slate-900 text-white p-6 flex items-center justify-center">
@@ -381,7 +397,6 @@ export default function MenuPage() {
     );
   }
 
-  // --- VISTA PUBBLICA CLIENTE (CON CARRELLO E EMAIL OBBLIGATORIA) ---
   if (!isOwnerView) {
     return (
       <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6 pb-24">
@@ -472,7 +487,7 @@ export default function MenuPage() {
                   />
                 </div>
 
-                {/* CAMPO EMAIL OBBLIGATORIO */}
+                {/* CAMPO EMAIL OBBLIGATORIO AGGIUNTO NEL FORM */}
                 <input
                   type="email"
                   required
@@ -527,7 +542,6 @@ export default function MenuPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-4xl mx-auto space-y-8">
-        
         <div className="flex justify-between items-center border-b border-slate-800 pb-4">
           <div>
             <span className="text-xs text-amber-500 font-bold uppercase">Gestione Carta</span>
@@ -538,7 +552,6 @@ export default function MenuPage() {
           </Link>
         </div>
 
-        {/* Gestione Categorie */}
         <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
           <h2 className="text-sm font-bold text-amber-500">Gestione Categorie Menu</h2>
           <div className="flex gap-2">
@@ -573,7 +586,6 @@ export default function MenuPage() {
           </div>
         </div>
 
-        {/* Form Piatto */}
         <form onSubmit={handleSaveProduct} className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-semibold text-amber-500">
@@ -653,7 +665,6 @@ export default function MenuPage() {
           </div>
         </form>
 
-        {/* Prodotti Raggruppati sotto le Categorie */}
         <div className="space-y-6">
           {categories.map((catName) => {
             const catProducts = products.filter((p) => (p.category || 'Antipasti') === catName);
@@ -717,7 +728,6 @@ export default function MenuPage() {
             );
           })}
         </div>
-
       </div>
     </div>
   );
