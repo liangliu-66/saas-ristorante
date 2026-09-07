@@ -5,7 +5,6 @@ import { createClient } from '@supabase/supabase-js';
 const resend = new Resend(process.env.RESEND_API_KEY);
 const SENDER_EMAIL = 'NOM SUSHI VIBES <onboarding@resend.dev>';
 
-// Inizializza Supabase lato server per poter interrogare il database se necessario
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -28,11 +27,12 @@ export async function POST(request: Request) {
       guests 
     } = body;
 
-    if (!customerEmail) {
+    // Se l'email non è presente, usciamo in modo pulito senza bloccare l'applicazione
+    if (!customerEmail || !customerEmail.trim()) {
       return NextResponse.json({ success: true, message: 'Email cliente non presente, invio saltato.' });
     }
 
-    // SE MANCANO GLI ITEMS MA C'È UN ORDER ID (es. aggiornamento da dashboard), LI LEGGIAMO DA SUPABASE
+    // Se mancano gli elementi ma c'è un ID ordine (es. aggiornamento da dashboard), li recuperiamo da Supabase
     if (type === 'order' && (!items || items.length === 0) && orderId) {
       const { data: dbOrder } = await supabase
         .from('orders')
@@ -119,14 +119,24 @@ export async function POST(request: Request) {
       if (newStatus === 'pending') {
         subject = `Conferma Richiesta Prenotazione Tavolo - ${restaurantName || 'NOM SUSHI VIBES'}`;
         htmlContent = `
-          <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff;">
             <h2 style="color: #d97706; margin-top: 0;">Richiesta Prenotazione Ricevuta, ${customerName}!</h2>
             <p>Abbiamo registrato la tua richiesta di prenotazione con i seguenti dati:</p>
             <ul style="line-height: 1.6;">
               <li><strong>Data e Ora:</strong> ${pickupTime}</li>
               <li><strong>Numero Coperti:</strong> ${guests || 1} persone</li>
             </ul>
-            <p style="color: #666; font-size: 12px; margin-top: 30px; text-align: center;">Il ristorante verificherà la disponibilità e ti contatterà per la conferma definitiva.</p>
+            <p style="color: #666; font-size: 12px; margin-top: 30px; text-align: center;">Il ristorante verificherà la disponibilità e ti invierà una conferma definitiva.</p>
+          </div>
+        `;
+      } else if (newStatus === 'confirmed') {
+        subject = `Prenotazione Tavolo Confermata! - ${restaurantName || 'NOM SUSHI VIBES'}`;
+        htmlContent = `
+          <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff;">
+            <h2 style="color: #059669; margin-top: 0;">La tua prenotazione è confermata!</h2>
+            <p>Ciao <strong>${customerName}</strong>, il ristorante ha accettato la tua prenotazione per <strong>${guests || 1} persone</strong>.</p>
+            <p><strong>Data e Ora:</strong> ${pickupTime}</p>
+            <p style="color: #666; font-size: 12px; margin-top: 30px; text-align: center;">Ti aspettiamo!</p>
           </div>
         `;
       }

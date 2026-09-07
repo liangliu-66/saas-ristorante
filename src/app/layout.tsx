@@ -12,9 +12,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "SaaS Ristoranti - Menu & Ordini Digitali",
-  description: "Piattaforma esclusiva per la gestione di menu, asporto e prenotazioni",
+export const metadata = {
+  title: 'Nom Sushi Vibes', // <-- Inserisci qui il nome che vuoi far comparire nella scheda
+  description: 'Il tuo menu digitale e prenotazioni',
+  icons: {
+    icon: '/favicon.png', // <-- Percorso dell'icona (puoi metterla nella cartella public)
+  },
 };
 
 export default function RootLayout({

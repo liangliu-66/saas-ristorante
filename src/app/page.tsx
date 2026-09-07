@@ -28,6 +28,8 @@ function PublicPageContent() {
 
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
 
   const [orderDate, setOrderDate] = useState(todayStr);
   const [pickupTime, setPickupTime] = useState('');
@@ -73,12 +75,14 @@ function PublicPageContent() {
             setOrderType('delivery');
           }
 
-          // Imposta i default iniziali basati sui database slots se esistono
-          if (restData.order_time_slots && restData.order_time_slots.length > 0) {
-            setPickupTime(restData.order_time_slots[0]);
+          // Imposta i default iniziali se esistono slot
+          const defaultOrderSlots = restData.order_time_slots;
+          if (defaultOrderSlots && Array.isArray(defaultOrderSlots) && defaultOrderSlots.length > 0) {
+            setPickupTime(defaultOrderSlots[0]);
           }
-          if (restData.reservation_time_slots && restData.reservation_time_slots.length > 0) {
-            setResTime(restData.reservation_time_slots[0]);
+          const defaultResSlots = restData.reservation_time_slots;
+          if (defaultResSlots && Array.isArray(defaultResSlots) && defaultResSlots.length > 0) {
+            setResTime(defaultResSlots[0]);
           }
         }
 
@@ -250,7 +254,7 @@ function PublicPageContent() {
     const rwgToken = searchParams.get('rwg_token');
     const reservationNotesPayload = `${resNotes || ''}${rwgToken ? ` (Ref: rwg_token)` : ''}`;
 
-    const { error } = await supabase.from('reservations').insert({
+    const { data: insertedRes, error } = await supabase.from('reservations').insert({
       restaurant_id: restaurant?.id,
       customer_name: customerName,
       customer_phone: customerPhone || null,
@@ -260,10 +264,33 @@ function PublicPageContent() {
       reservation_time: resTime,
       notes: reservationNotesPayload,
       status: 'pending',
-    });
+    }).select().single();
 
     setIsSubmitting(false);
+
     if (!error) {
+      // Se l'utente ha inserito l'email, inviamo la conferma automatica
+      if (resEmail) {
+        try {
+          await fetch('/api/notify-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              orderId: insertedRes?.id,
+              customerEmail: resEmail,
+              customerName: customerName,
+              newStatus: 'pending',
+              type: 'reservation',
+              restaurantName: restaurant?.name,
+              pickupTime: `${resDate} alle ${resTime}`,
+              guests: resGuests,
+            }),
+          });
+        } catch (err) {
+          console.error('Errore invio email prenotazione:', err);
+        }
+      }
+
       setSubmittedReceipt({
         type: 'reservation',
         customerName,
@@ -279,25 +306,43 @@ function PublicPageContent() {
     }
   };
 
-  // Funzioni che pescano ESCLUSIVAMENTE gli array personalizzati da Supabase
-  const getAvailableTimeSlots = () => {
+  // Funzioni per filtrare gli slot orari da Supabase rimuovendo quelli passati se la data è oggi
+  const getAvailableTimeSlots = (selectedDate: string) => {
     const customSlots = restaurant?.order_time_slots;
-    if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
-      return customSlots.sort();
+    const slots = (customSlots && Array.isArray(customSlots) && customSlots.length > 0)
+      ? customSlots.sort()
+      : ["12:00", "12:30", "13:00", "19:30", "20:00", "20:30"];
+
+    if (selectedDate === todayStr) {
+      return slots.filter((slot: string) => {
+        const [h, m] = slot.split(':').map(Number);
+        if (h > currentHour) return true;
+        if (h === currentHour && m > currentMinute) return true;
+        return false;
+      });
     }
-    return ["19:30"]; // Fallback di sicurezza se l'array è vuoto
+    return slots;
   };
 
-  const getAvailableReservationTimeSlots = () => {
+  const getAvailableReservationTimeSlots = (selectedDate: string) => {
     const customSlots = restaurant?.reservation_time_slots;
-    if (customSlots && Array.isArray(customSlots) && customSlots.length > 0) {
-      return customSlots.sort();
+    const slots = (customSlots && Array.isArray(customSlots) && customSlots.length > 0)
+      ? customSlots.sort()
+      : ["19:00", "19:30", "20:00", "20:30", "21:00"];
+
+    if (selectedDate === todayStr) {
+      return slots.filter((slot: string) => {
+        const [h, m] = slot.split(':').map(Number);
+        if (h > currentHour) return true;
+        if (h === currentHour && m > currentMinute) return true;
+        return false;
+      });
     }
-    return ["20:00"]; // Fallback di sicurezza se l'array è vuoto
+    return slots;
   };
 
-  const timeSlots = getAvailableTimeSlots();
-  const reservationTimeSlots = getAvailableReservationTimeSlots();
+  const timeSlots = getAvailableTimeSlots(orderDate);
+  const reservationTimeSlots = getAvailableReservationTimeSlots(resDate);
 
   const allowTakeaway = restaurant?.allow_takeaway ?? true;
   const allowDelivery = restaurant?.allow_delivery ?? true;
@@ -409,9 +454,57 @@ function PublicPageContent() {
                   <span className="font-bold text-white">{submittedReceipt.guests} persone</span>
                 </div>
 
-                {submittedReceipt.customerEmail && (
+                {submittedReceipt.customerEmail ? (
                   <div className="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg text-emerald-400 text-center font-sans text-xs mt-4">
                     Abbiamo registrato la tua prenotazione e inviato i dettagli a <strong>{submittedReceipt.customerEmail}</strong>.
+                  </div>
+                ) : (
+                  <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg space-y-3 font-sans mt-4">
+                    <p className="text-xs text-slate-300">Vuoi ricevere una copia del riepilogo via email?</p>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        placeholder="Inserisci la tua email..."
+                        id="extra-email-input"
+                        className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const emailInput = (document.getElementById('extra-email-input') as HTMLInputElement)?.value;
+                          if (!emailInput || !emailInput.includes('@')) {
+                            alert('Inserisci un indirizzo email valido');
+                            return;
+                          }
+                          try {
+                            const res = await fetch('/api/notify-order', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                customerEmail: emailInput,
+                                customerName: submittedReceipt.customerName,
+                                newStatus: 'pending',
+                                pickupTime: `${submittedReceipt.date} alle ${submittedReceipt.time}`,
+                                type: 'reservation',
+                                restaurantName: restaurant?.name,
+                                guests: submittedReceipt.guests,
+                              }),
+                            });
+                            if (res.ok) {
+                              alert('Email inviata con successo!');
+                              setSubmittedReceipt({ ...submittedReceipt, customerEmail: emailInput });
+                            } else {
+                              alert("Errore nell'invio dell'email.");
+                            }
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-4 py-2 rounded text-xs shrink-0"
+                      >
+                        Invia
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -615,7 +708,7 @@ function PublicPageContent() {
               />
               <input
                 type="email"
-                placeholder="Email"
+                placeholder="Email (opzionale)"
                 value={resEmail}
                 onChange={(e) => setResEmail(e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white"
