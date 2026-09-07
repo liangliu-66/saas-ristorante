@@ -154,7 +154,6 @@ function PublicPageContent() {
     });
   };
 
-  // Validazione telefono uniforme: almeno 10 cifre
   const isValidPhone = (phone: string) => {
     const cleanPhone = phone.replace(/[\s\-\(\)\+]/g, '');
     return /^\d{10,15}$/.test(cleanPhone);
@@ -165,7 +164,7 @@ function PublicPageContent() {
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
 
     if (!isValidPhone(customerPhone)) {
-      alert('Inserisci un numero di telefono valido');
+      alert('Inserisci un numero di telefono valido di almeno 10 cifre!');
       return;
     }
     if (!customerEmail) { alert('Inserisci un indirizzo email valido!'); return; }
@@ -587,28 +586,54 @@ function PublicPageContent() {
                 <div key={catName} className="space-y-3">
                   <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{catName}</h2>
                   <div className="space-y-2">
-                    {catProducts.map((product) => (
-                      <div key={product.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
-                        <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
-                          {product.image_url ? (
-                            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                    {catProducts.map((product) => {
+                      const cartItem = cart[product.id];
+                      const quantity = cartItem ? cartItem.quantity : 0;
+
+                      return (
+                        <div key={product.id} className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700/60 gap-3">
+                          <div className="w-16 h-16 bg-slate-900 rounded-lg shrink-0 border border-slate-700/80 overflow-hidden flex items-center justify-center">
+                            {product.image_url ? (
+                              <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
+                            )}
+                          </div>
+                          <div className="space-y-0.5 flex-1">
+                            <h3 className="font-bold text-xs text-white">{product.name}</h3>
+                            {product.description && <p className="text-[11px] text-slate-400">{product.description}</p>}
+                            <span className="font-mono text-amber-400 font-bold text-xs">€{Number(product.price).toFixed(2)}</span>
+                          </div>
+
+                          {quantity > 0 ? (
+                            <div className="flex items-center gap-1.5 shrink-0 bg-slate-900 border border-slate-700 rounded-lg p-1">
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(product.id, -1)}
+                                className="bg-slate-800 hover:bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold text-xs"
+                              >
+                                -
+                              </button>
+                              <span className="font-bold text-xs px-1.5 text-amber-400 font-mono">{quantity}</span>
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(product.id, 1)}
+                                className="bg-slate-800 hover:bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold text-xs"
+                              >
+                                +
+                              </button>
+                            </div>
                           ) : (
-                            <span className="text-[10px] text-slate-500 font-mono uppercase">Foto</span>
+                            <button
+                              onClick={() => addToCart(product)}
+                              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                            >
+                              Aggiungi
+                            </button>
                           )}
                         </div>
-                        <div className="space-y-0.5 flex-1">
-                          <h3 className="font-bold text-xs text-white">{product.name}</h3>
-                          {product.description && <p className="text-[11px] text-slate-400">{product.description}</p>}
-                          <span className="font-mono text-amber-400 font-bold text-xs">€{Number(product.price).toFixed(2)}</span>
-                        </div>
-                        <button
-                          onClick={() => addToCart(product)}
-                          className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
-                        >
-                          Aggiungi
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -684,7 +709,7 @@ function PublicPageContent() {
                   />
                   <input
                     type="tel"
-                    placeholder="Numero di telefono *"
+                    placeholder="Numero di telefono (min. 10 cifre) *"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                     className={`w-full bg-slate-900 border rounded-lg p-2.5 text-xs text-white transition ${
@@ -702,7 +727,6 @@ function PublicPageContent() {
                   />
 
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    {/* INIBIZIONE DATE PASSATE APPLICATA ANCHE ALL'ORDINE */}
                     <input
                       type="date"
                       min={todayStr}
@@ -756,7 +780,7 @@ function PublicPageContent() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 type="tel"
-                placeholder="Telefono *"
+                placeholder="Telefono (min. 10 cifre)"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 className={`w-full bg-slate-900 border rounded-lg p-2.5 text-white ${
@@ -803,7 +827,7 @@ function PublicPageContent() {
             </div>
 
             <textarea
-              placeholder="Note generali (opzionale)"
+              placeholder="Note o richieste particolari per il tavolo (es. seggiolone, allergie...)"
               value={resNotes}
               onChange={(e) => setResNotes(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
