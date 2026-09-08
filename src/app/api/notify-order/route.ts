@@ -24,29 +24,48 @@ export async function POST(request: Request) {
       pickupTime,
       orderType,
       items, 
-      guests 
+      guests,
+      party_size
     } = body;
+
+    // Normalizziamo il numero di ospiti prendendo party_size o guests, con fallback a 1
+    let numGuests = party_size || guests || 1;
 
     // Se l'email non è presente, usciamo in modo pulito senza bloccare l'applicazione
     if (!customerEmail || !customerEmail.trim()) {
       return NextResponse.json({ success: true, message: 'Email cliente non presente, invio saltato.' });
     }
 
-    // Se mancano gli elementi ma c'è un ID ordine (es. aggiornamento da dashboard), li recuperiamo da Supabase
-    if (type === 'order' && (!items || items.length === 0) && orderId) {
-      const { data: dbOrder } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('id', orderId)
-        .maybeSingle();
+    // Se mancano dati e c'è un ID, li recuperiamo da Supabase in base al tipo (order o reservation)
+    if (orderId) {
+      if (type === 'order' && (!items || items.length === 0)) {
+        const { data: dbOrder } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('id', orderId)
+          .maybeSingle();
 
-      if (dbOrder) {
-        items = dbOrder.items || [];
-        totalAmount = dbOrder.total_amount;
-        pickupTime = dbOrder.pickup_time;
-        orderType = dbOrder.order_type;
-        customerName = dbOrder.customer_name;
-        customerEmail = dbOrder.customer_email;
+        if (dbOrder) {
+          items = dbOrder.items || [];
+          totalAmount = dbOrder.total_amount;
+          pickupTime = dbOrder.pickup_time;
+          orderType = dbOrder.order_type;
+          customerName = dbOrder.customer_name;
+          customerEmail = dbOrder.customer_email;
+        }
+      } else if (type === 'reservation') {
+        const { data: dbRes } = await supabase
+          .from('reservations')
+          .select('*')
+          .eq('id', orderId)
+          .maybeSingle();
+
+        if (dbRes) {
+          numGuests = dbRes.party_size || dbRes.guests || 1;
+          pickupTime = dbRes.reservation_time || pickupTime;
+          customerName = dbRes.customer_name || customerName;
+          customerEmail = dbRes.customer_email || customerEmail;
+        }
       }
     }
 
@@ -124,7 +143,7 @@ export async function POST(request: Request) {
             <p>Abbiamo registrato la tua richiesta di prenotazione con i seguenti dati:</p>
             <ul style="line-height: 1.6;">
               <li><strong>Data e Ora:</strong> ${pickupTime}</li>
-              <li><strong>Numero Coperti:</strong> ${guests || 1} persone</li>
+              <li><strong>Numero Coperti:</strong> ${numGuests} persone</li>
             </ul>
             <p style="color: #666; font-size: 12px; margin-top: 30px; text-align: center;">Il ristorante verificherà la disponibilità e ti invierà una conferma definitiva.</p>
           </div>
@@ -134,7 +153,7 @@ export async function POST(request: Request) {
         htmlContent = `
           <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff;">
             <h2 style="color: #059669; margin-top: 0;">La tua prenotazione è confermata!</h2>
-            <p>Ciao <strong>${customerName}</strong>, il ristorante ha accettato la tua prenotazione per <strong>${guests || 1} persone</strong>.</p>
+            <p>Ciao <strong>${customerName}</strong>, il ristorante ha accettato la tua prenotazione per <strong>${numGuests} persone</strong>.</p>
             <p><strong>Data e Ora:</strong> ${pickupTime}</p>
             <p style="color: #666; font-size: 12px; margin-top: 30px; text-align: center;">Ti aspettiamo!</p>
           </div>
