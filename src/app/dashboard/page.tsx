@@ -37,6 +37,15 @@ export default function LiveDashboardPage() {
   const [pendingFutureDates, setPendingFutureDates] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // Stato per la gestione della modale/pannello di modifica
+  const [editingItem, setEditingItem] = useState<OrderItem | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [editGuests, setEditGuests] = useState(1);
+  const [editNotes, setEditNotes] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -317,6 +326,7 @@ export default function LiveDashboardPage() {
 
       updatePendingFutureCheck(updatedOrders, updatedResrs);
 
+      // Invia la notifica email SOLO se lo stato diventa confirmed e non lo era già in precedenza
       if (currentItem && newStatus === 'confirmed' && !wasAlreadyConfirmed) {
         await fetch('/api/notify-order', {
           method: 'POST',
@@ -338,6 +348,63 @@ export default function LiveDashboardPage() {
     } else {
       alert(`Errore aggiornamento: ${error.message}`);
     }
+  };
+
+  const openEditModal = (item: OrderItem) => {
+    setEditingItem(item);
+    setEditName(item.customer_name || '');
+    setEditDate(item.date || todayDate);
+    setEditTime(item.time || '12:00');
+    setEditGuests(item.guests || item.party_size || 1);
+    setEditNotes(item.notes || '');
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem) return;
+
+    setSavingEdit(true);
+    const isOrder = editingItem.type === 'order';
+    const tableName = isOrder ? 'orders' : 'reservations';
+
+    let updatePayload: any = {};
+    if (isOrder) {
+      updatePayload = {
+        customer_name: editName,
+        pickup_time: `${editDate} ${editTime}`,
+        notes: editNotes,
+      };
+    } else {
+      updatePayload = {
+        customer_name: editName,
+        reservation_date: editDate,
+        reservation_time: editTime,
+        party_size: editGuests,
+        guests: editGuests,
+        notes: editNotes,
+      };
+    }
+
+    const { error } = await supabase
+      .from(tableName)
+      .update(updatePayload)
+      .eq('id', editingItem.id);
+
+    if (!error) {
+      if (isOrder) {
+        setOrdersList((prev) =>
+          prev.map((o) => (o.id === editingItem.id ? { ...o, ...updatePayload, date: editDate, time: editTime } : o))
+        );
+      } else {
+        setReservationsList((prev) =>
+          prev.map((r) => (r.id === editingItem.id ? { ...r, ...updatePayload, date: editDate, time: editTime, party_size: editGuests, guests: editGuests } : r))
+        );
+      }
+      setEditingItem(null);
+    } else {
+      alert(`Errore durante il salvataggio: ${error.message}`);
+    }
+    setSavingEdit(false);
   };
 
   const handleLogout = async () => {
@@ -407,6 +474,13 @@ export default function LiveDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => openEditModal(item)}
+              className="text-xs font-bold px-3.5 py-1.5 rounded-lg transition border bg-slate-800 hover:bg-slate-700 text-amber-400 border-slate-700"
+            >
+              Modifica
+            </button>
+
             <button
               onClick={() => handleStatusChange(item.id, item.type, 'confirmed')}
               className={`text-xs font-bold px-3.5 py-1.5 rounded-lg transition border ${
@@ -747,7 +821,104 @@ export default function LiveDashboardPage() {
         )}
 
       </main>
+
+      {/* MODALE DI MODIFICA DATI */}
+      {editingItem && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 space-y-5 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h2 className="text-base font-bold text-amber-400">
+                Modifica {editingItem.type === 'order' ? 'Ordine' : 'Prenotazione'}
+              </h2>
+              <button 
+                onClick={() => setEditingItem(null)}
+                className="text-slate-400 hover:text-white text-sm font-bold px-2 py-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="text-slate-400 font-semibold block">Nome Cliente</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-semibold block">Data</label>
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-semibold block">Orario</label>
+                  <input
+                    type="time"
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              {editingItem.type === 'reservation' && (
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-semibold block">Numero Persone (Coperti)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={editGuests}
+                    onChange={(e) => setEditGuests(parseInt(e.target.value, 10) || 1)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-slate-400 font-semibold block">Commenti / Note</label>
+                <textarea
+                  rows={3}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingItem(null)}
+                  className="w-1/2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl transition"
+                >
+                  Annulla
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="w-1/2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-3 rounded-xl transition"
+                >
+                  {savingEdit ? 'Salvataggio...' : 'Salva Modifiche'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
