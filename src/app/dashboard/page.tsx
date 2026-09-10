@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState, useRef } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
@@ -322,7 +324,6 @@ export default function LiveDashboardPage() {
 
       updatePendingFutureCheck(updatedOrders, updatedResrs);
 
-      // Invia la notifica email quando lo stato diventa 'confirmed'
       if (currentItem && newStatus === 'confirmed') {
         await fetch('/api/notify-order', {
           method: 'POST',
@@ -455,7 +456,6 @@ export default function LiveDashboardPage() {
               </span>
             )}
 
-            {/* Riquadro Data e Ora */}
             <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-3 py-1 rounded-md text-xs font-bold text-slate-200">
               <span>{item.date}</span>
               <span className="text-slate-500">|</span>
@@ -558,7 +558,6 @@ export default function LiveDashboardPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col md:flex-row relative">
       
-      {/* HEADER MOBILE COMPATTO */}
       <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between sticky top-0 z-50">
         <div>
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">Dashboard Live</span>
@@ -591,7 +590,6 @@ export default function LiveDashboardPage() {
         />
       )}
 
-      {/* SIDEBAR LATERALE */}
       <aside 
         className={`w-72 md:w-72 bg-slate-900 border-r border-slate-800 p-6 flex flex-col justify-between shrink-0 transition-transform duration-300 ease-in-out fixed md:static inset-y-0 left-0 z-40 ${
           isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
@@ -651,7 +649,6 @@ export default function LiveDashboardPage() {
         </div>
       </aside>
 
-      {/* CONTENUTO PRINCIPALE */}
       <main className="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
         
         {isAlarmPlaying && (
@@ -819,7 +816,6 @@ export default function LiveDashboardPage() {
 
       </main>
 
-      {/* MODALE DI MODIFICA DATI */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 space-y-5 shadow-2xl">
@@ -925,4 +921,3 @@ export default function LiveDashboardPage() {
     </div>
   );
 }
-
