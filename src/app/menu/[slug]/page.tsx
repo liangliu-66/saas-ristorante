@@ -186,6 +186,10 @@ export default function MenuPage() {
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Protezione immediata da doppio invio
+    if (submitting) return;
+    
     if (cart.length === 0 || !restaurant) return;
     if (!customerName || !customerPhone || !customerEmail || !pickupTime) {
       alert('Compila tutti i campi obbligatori, compreso l\'orario.');
@@ -242,8 +246,8 @@ export default function MenuPage() {
       setCart([]);
     } else {
       alert(`Errore invio ordine: ${error?.message}`);
+      setSubmitting(false); // Riattiva solo in caso di errore
     }
-    setSubmitting(false);
   };
 
   const resetForm = () => {
@@ -399,7 +403,10 @@ export default function MenuPage() {
             Il ristorante ha ricevuto il tuo ordine. Ti abbiamo inviato una conferma all'indirizzo <strong>{customerEmail}</strong>.
           </p>
           <button
-            onClick={() => setOrderSuccess(false)}
+            onClick={() => {
+              setOrderSuccess(false);
+              setSubmitting(false);
+            }}
             className="bg-amber-500 text-slate-900 font-bold px-6 py-2 rounded-lg text-xs"
           >
             Fai un altro ordine
