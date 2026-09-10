@@ -877,15 +877,21 @@ export default function LiveDashboardPage() {
               {editingItem.type === 'reservation' && (
                 <div className="space-y-1">
                   <label className="text-slate-400 font-semibold block">Numero Persone (Coperti)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
+                  <select
                     value={editGuests}
-                    onChange={(e) => setEditGuests(parseInt(e.target.value, 10) || 1)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                    onChange={(e) => setEditGuests(parseInt(e.target.value, 10))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 cursor-pointer"
                     required
-                  />
+                  >
+                    {[...Array(20)].map((_, i) => {
+                      const num = i + 1;
+                      return (
+                        <option key={num} value={num} className="bg-slate-950 text-white">
+                          {num} {num === 1 ? 'persona' : 'persone'}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
               )}
 
