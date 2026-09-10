@@ -294,6 +294,12 @@ export default function LiveDashboardPage() {
       if (!confirmCancel) return;
     }
 
+    const currentItem = type === 'order' 
+      ? ordersList.find(o => o.id === id) 
+      : reservationsList.find(r => r.id === id);
+
+    const wasAlreadyConfirmed = currentItem?.status === 'confirmed';
+
     const tableName = type === 'order' ? 'orders' : 'reservations';
     const { error } = await supabase.from(tableName).update({ status: newStatus }).eq('id', id);
 
@@ -311,11 +317,7 @@ export default function LiveDashboardPage() {
 
       updatePendingFutureCheck(updatedOrders, updatedResrs);
 
-      const currentItem = type === 'order' 
-        ? ordersList.find(o => o.id === id) 
-        : reservationsList.find(r => r.id === id);
-
-      if (currentItem) {
+      if (currentItem && newStatus === 'confirmed' && !wasAlreadyConfirmed) {
         await fetch('/api/notify-order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -748,3 +750,4 @@ export default function LiveDashboardPage() {
     </div>
   );
 }
+
