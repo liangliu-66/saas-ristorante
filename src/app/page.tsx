@@ -796,7 +796,7 @@ function PublicPageContent() {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <input
                 type="date"
                 min={todayStr}
@@ -815,15 +815,23 @@ function PublicPageContent() {
                   <option key={slot} value={slot}>{slot}</option>
                 ))}
               </select>
-              <input
-                type="number"
-                min="1"
-                max="20"
-                value={resGuests}
-                onChange={(e) => setResGuests(parseInt(e.target.value, 10))}
-                className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white"
-                required
-              />
+            </div>
+
+            {/* SEZIONE NUMERO PERSONE AGGIORNATA */}
+            <div className="space-y-1">
+              <label className="block text-[11px] font-semibold text-slate-300">Numero persone *</label>
+              <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-lg p-2.5">
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={resGuests}
+                  onChange={(e) => setResGuests(parseInt(e.target.value, 10) || 1)}
+                  className="bg-transparent text-white w-full focus:outline-none"
+                  required
+                />
+                <span className="text-slate-400 text-xs shrink-0 select-none font-semibold">persone</span>
+              </div>
             </div>
 
             <textarea
