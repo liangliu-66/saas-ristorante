@@ -1,3 +1,5 @@
+
+
 'use client';
 
 import { useEffect, useState, Suspense } from 'react';
@@ -39,7 +41,7 @@ function PublicPageContent() {
   const [resEmail, setResEmail] = useState('');
   const [resDate, setResDate] = useState(todayStr);
   const [resTime, setResTime] = useState('');
-  const [resGuests, setResGuests] = useState(2);
+  const [resGuests, setResGuests] = useState(1);
   const [resNotes, setResNotes] = useState('');
 
   const [loading, setLoading] = useState(true);
@@ -267,6 +269,7 @@ function PublicPageContent() {
       customer_phone: customerPhone || null,
       customer_email: resEmail || null,
       party_size: resGuests,
+      guests: resGuests,
       reservation_date: resDate,
       reservation_time: resTime,
       notes: reservationNotesPayload,
