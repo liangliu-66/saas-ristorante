@@ -1,8 +1,3 @@
-Ecco il codice completo aggiornato della Live Dashboard, corretto e allineato.
-Nel codice che avevi incollato la tendina (<select>) nella modale di modifica c'era già, ma per quanto riguarda l'invio della seconda email (dopo il click su "Conferma"), il problema principale era che la dashboard non passava all'API il parametro guests o party_size, impedendo al sistema di comporre correttamente il testo dell'email di conferma per le prenotazioni.
-Ho aggiornato la chiamata di fetch dentro handleStatusChange inserendo esplicitamente anche il numero dei coperti (guests: currentItem.guests || currentItem.party_size), oltre a mantenere pulito il codice dell'API.
-'use client';
-
 import { useEffect, useState, useRef } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
