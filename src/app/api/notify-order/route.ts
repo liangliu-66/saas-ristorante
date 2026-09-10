@@ -28,43 +28,39 @@ export async function POST(request: Request) {
       party_size
     } = body;
 
-    // Normalizziamo il numero di ospiti prendendo party_size o guests, con fallback a 1
     let numGuests = party_size || guests || 1;
 
-    // Se l'email non è presente, usciamo in modo pulito senza bloccare l'applicazione
     if (!customerEmail || !customerEmail.trim()) {
       return NextResponse.json({ success: true, message: 'Email cliente non presente, invio saltato.' });
     }
 
-    // Se mancano dati e c'è un ID, li recuperiamo da Supabase in base al tipo (order o reservation)
+    // Controllo preventivo sul database per evitare invii multipli dello stesso stato
     if (orderId) {
-      if (type === 'order' && (!items || items.length === 0)) {
-        const { data: dbOrder } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('id', orderId)
-          .maybeSingle();
+      const tableName = type === 'order' ? 'orders' : 'reservations';
+      const { data: currentRecord } = await supabase
+        .from(tableName)
+        .select('*')
+        .eq('id', orderId)
+        .maybeSingle();
 
-        if (dbOrder) {
-          items = dbOrder.items || [];
-          totalAmount = dbOrder.total_amount;
-          pickupTime = dbOrder.pickup_time;
-          orderType = dbOrder.order_type;
-          customerName = dbOrder.customer_name;
-          customerEmail = dbOrder.customer_email;
+      if (currentRecord) {
+        // Se l'ordine/prenotazione è già confermato ed è già stata inviata un'email di conferma, blocchiamo i doppioni
+        if (newStatus === 'confirmed' && currentRecord.status === 'confirmed' && currentRecord.email_sent) {
+          return NextResponse.json({ success: true, message: 'Email di conferma già inviata in precedenza.' });
         }
-      } else if (type === 'reservation') {
-        const { data: dbRes } = await supabase
-          .from('reservations')
-          .select('*')
-          .eq('id', orderId)
-          .maybeSingle();
 
-        if (dbRes) {
-          numGuests = dbRes.party_size || dbRes.guests || 1;
-          pickupTime = dbRes.reservation_time || pickupTime;
-          customerName = dbRes.customer_name || customerName;
-          customerEmail = dbRes.customer_email || customerEmail;
+        if (type === 'order') {
+          items = currentRecord.items || items || [];
+          totalAmount = currentRecord.total_amount ?? totalAmount;
+          pickupTime = currentRecord.pickup_time || pickupTime;
+          orderType = currentRecord.order_type || orderType;
+          customerName = currentRecord.customer_name || customerName;
+          customerEmail = currentRecord.customer_email || customerEmail;
+        } else if (type === 'reservation') {
+          numGuests = currentRecord.party_size || currentRecord.guests || numGuests;
+          pickupTime = currentRecord.reservation_time || pickupTime;
+          customerName = currentRecord.customer_name || customerName;
+          customerEmail = currentRecord.customer_email || customerEmail;
         }
       }
     }
@@ -72,7 +68,6 @@ export async function POST(request: Request) {
     let subject = '';
     let htmlContent = '';
 
-    // --- 1. GESTIONE ORDINE (Asporto / Delivery) ---
     if (type === 'order') {
       const formattedItemsHtml = Array.isArray(items) && items.length > 0
         ? items.map((it: any) => {
@@ -132,8 +127,6 @@ export async function POST(request: Request) {
         `;
       }
     } 
-    
-    // --- 2. GESTIONE PRENOTAZIONE TAVOLO ---
     else if (type === 'reservation') {
       if (newStatus === 'pending') {
         subject = `Conferma Richiesta Prenotazione Tavolo - ${restaurantName || 'NOM SUSHI VIBES'}`;
@@ -171,6 +164,15 @@ export async function POST(request: Request) {
       subject: subject,
       html: htmlContent,
     });
+
+    // Aggiorniamo il flag sul database per indicare che l'email di conferma è stata inviata con successo
+    if (orderId && newStatus === 'confirmed') {
+      const tableName = type === 'order' ? 'orders' : 'reservations';
+      await supabase
+        .from(tableName)
+        .update({ email_sent: true })
+        .eq('id', orderId);
+    }
 
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
