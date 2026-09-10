@@ -817,20 +817,25 @@ function PublicPageContent() {
               </select>
             </div>
 
-            {/* SEZIONE NUMERO PERSONE AGGIORNATA */}
+            {/* SEZIONE NUMERO PERSONE A TENDINA */}
             <div className="space-y-1">
               <label className="block text-[11px] font-semibold text-slate-300">Numero persone *</label>
               <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-lg p-2.5">
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
+                <select
                   value={resGuests}
-                  onChange={(e) => setResGuests(parseInt(e.target.value, 10) || 1)}
-                  className="bg-transparent text-white w-full focus:outline-none"
+                  onChange={(e) => setResGuests(parseInt(e.target.value, 10))}
+                  className="bg-transparent text-white w-full focus:outline-none cursor-pointer"
                   required
-                />
-                <span className="text-slate-400 text-xs shrink-0 select-none font-semibold">persone</span>
+                >
+                  {[...Array(20)].map((_, i) => {
+                    const num = i + 1;
+                    return (
+                      <option key={num} value={num} className="bg-slate-900 text-white">
+                        {num} {num === 1 ? 'persona' : 'persone'}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
             </div>
 
