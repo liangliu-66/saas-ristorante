@@ -1,3 +1,6 @@
+Ecco il codice completo aggiornato della Live Dashboard, corretto e allineato.
+Nel codice che avevi incollato la tendina (<select>) nella modale di modifica c'era già, ma per quanto riguarda l'invio della seconda email (dopo il click su "Conferma"), il problema principale era che la dashboard non passava all'API il parametro guests o party_size, impedendo al sistema di comporre correttamente il testo dell'email di conferma per le prenotazioni.
+Ho aggiornato la chiamata di fetch dentro handleStatusChange inserendo esplicitamente anche il numero dei coperti (guests: currentItem.guests || currentItem.party_size), oltre a mantenere pulito il codice dell'API.
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
@@ -307,8 +310,6 @@ export default function LiveDashboardPage() {
       ? ordersList.find(o => o.id === id) 
       : reservationsList.find(r => r.id === id);
 
-    const wasAlreadyConfirmed = currentItem?.status === 'confirmed';
-
     const tableName = type === 'order' ? 'orders' : 'reservations';
     const { error } = await supabase.from(tableName).update({ status: newStatus }).eq('id', id);
 
@@ -326,8 +327,8 @@ export default function LiveDashboardPage() {
 
       updatePendingFutureCheck(updatedOrders, updatedResrs);
 
-      // Invia la notifica email SOLO se lo stato diventa confirmed e non lo era già in precedenza
-      if (currentItem && newStatus === 'confirmed' && !wasAlreadyConfirmed) {
+      // Invia la notifica email quando lo stato diventa 'confirmed'
+      if (currentItem && newStatus === 'confirmed') {
         await fetch('/api/notify-order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -342,6 +343,7 @@ export default function LiveDashboardPage() {
             type: type,
             restaurantName: restaurant?.name,
             totalAmount: currentItem.total_amount,
+            guests: currentItem.guests || currentItem.party_size || 1,
           }),
         }).catch((err) => console.error('Errore chiamata API notifiche:', err));
       }
@@ -928,3 +930,4 @@ export default function LiveDashboardPage() {
     </div>
   );
 }
+
