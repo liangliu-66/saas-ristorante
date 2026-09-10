@@ -161,6 +161,7 @@ function PublicPageContent() {
 
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
 
     if (!isValidPhone(customerPhone)) {
@@ -172,75 +173,97 @@ function PublicPageContent() {
 
     setIsSubmitting(true);
 
-    const formattedItems = Object.values(cart).map((c) => ({
-      name: c.product.name,
-      quantity: c.quantity,
-      price: c.product.price,
-      itemNote: c.note ? `Nota: ${c.note}` : undefined,
-    }));
+    try {
+      const fifteenSecondsAgo = new Date(Date.now() - 15 * 1000).toISOString();
+      const { data: existingCheck } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('restaurant_id', restaurant?.id)
+        .eq('customer_name', customerName)
+        .eq('customer_phone', customerPhone)
+        .gte('created_at', fifteenSecondsAgo)
+        .maybeSingle();
 
-    const fullPickupTime = `${orderDate} ${pickupTime}`;
-    const orderNotesPayload = generalNotes 
-      ? `${generalNotes}${discountPercent > 0 ? ` [Sconto ${discountPercent}% applicato]` : ''}` 
-      : (discountPercent > 0 ? `[Sconto ${discountPercent}% applicato]` : '');
-
-    const { data: insertedOrder, error } = await supabase.from('orders').insert({
-      restaurant_id: restaurant?.id,
-      customer_name: customerName,
-      customer_phone: customerPhone,
-      customer_email: customerEmail,
-      order_type: orderType,
-      pickup_time: fullPickupTime,
-      items: formattedItems,
-      notes: orderNotesPayload,
-      total_amount: finalTotal,
-      status: 'pending',
-    }).select().single();
-
-    setIsSubmitting(false);
-
-    if (!error && insertedOrder) {
-      try {
-        await fetch('/api/notify-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: insertedOrder.id,
-            customerPhone: customerPhone,
-            customerEmail: customerEmail,
-            customerName: customerName,
-            newStatus: 'pending',
-            orderType: orderType,
-            pickupTime: fullPickupTime,
-            type: 'order',
-            restaurantName: restaurant?.name,
-            totalAmount: finalTotal,
-          }),
-        });
-      } catch (err) {
-        console.error('Errore invio email automatica:', err);
+      if (existingCheck) {
+        setIsSubmitting(false);
+        alert('Hai già inviato questo ordine pocanzi!');
+        return;
       }
 
-      setSubmittedReceipt({
-        type: 'order',
-        customerName,
-        customerPhone,
-        customerEmail,
-        orderType: orderType === 'takeaway' ? 'Ritiro d\'asporto' : 'Consegna a domicilio',
-        pickupTime: fullPickupTime,
+      const formattedItems = Object.values(cart).map((c) => ({
+        name: c.product.name,
+        quantity: c.quantity,
+        price: c.product.price,
+        itemNote: c.note ? `Nota: ${c.note}` : undefined,
+      }));
+
+      const fullPickupTime = `${orderDate} ${pickupTime}`;
+      const orderNotesPayload = generalNotes 
+        ? `${generalNotes}${discountPercent > 0 ? ` [Sconto ${discountPercent}% applicato]` : ''}` 
+        : (discountPercent > 0 ? `[Sconto ${discountPercent}% applicato]` : '');
+
+      const { data: insertedOrder, error } = await supabase.from('orders').insert({
+        restaurant_id: restaurant?.id,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        customer_email: customerEmail,
+        order_type: orderType,
+        pickup_time: fullPickupTime,
         items: formattedItems,
         notes: orderNotesPayload,
-        total: finalTotal
-      });
-      setCart({});
-      setGeneralNotes('');
-    } else {
-      alert(`Errore invio ordine: ${error?.message}`);
+        total_amount: finalTotal,
+        status: 'pending',
+      }).select().single();
+
+      if (error) throw error;
+
+      if (insertedOrder) {
+        try {
+          await fetch('/api/notify-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              orderId: insertedOrder.id,
+              customerPhone: customerPhone,
+              customerEmail: customerEmail,
+              customerName: customerName,
+              newStatus: 'pending',
+              orderType: orderType,
+              pickupTime: fullPickupTime,
+              type: 'order',
+              restaurantName: restaurant?.name,
+              totalAmount: finalTotal,
+            }),
+          });
+        } catch (err) {
+          console.error('Errore invio email automatica:', err);
+        }
+
+        setSubmittedReceipt({
+          type: 'order',
+          customerName,
+          customerPhone,
+          customerEmail,
+          orderType: orderType === 'takeaway' ? 'Ritiro d\'asporto' : 'Consegna a domicilio',
+          pickupTime: fullPickupTime,
+          items: formattedItems,
+          notes: orderNotesPayload,
+          total: finalTotal
+        });
+        setCart({});
+        setGeneralNotes('');
+      }
+    } catch (err: any) {
+      alert(`Errore invio ordine: ${err?.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleSendReservation = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     if (!customerPhone && !resEmail) {
       alert('Inserisci almeno un recapito tra telefono ed email!');
       return;
@@ -258,32 +281,49 @@ function PublicPageContent() {
 
     setIsSubmitting(true);
 
-    const rwgToken = searchParams.get('rwg_token');
-    const reservationNotesPayload = `${resNotes || ''}${rwgToken ? ` (Ref: rwg_token)` : ''}`;
+    try {
+      const fifteenSecondsAgo = new Date(Date.now() - 15 * 1000).toISOString();
+      const { data: existingCheck } = await supabase
+        .from('reservations')
+        .select('id')
+        .eq('restaurant_id', restaurant?.id)
+        .eq('customer_name', customerName)
+        .eq('reservation_date', resDate)
+        .eq('reservation_time', resTime)
+        .gte('created_at', fifteenSecondsAgo)
+        .maybeSingle();
 
-    const { data: insertedRes, error } = await supabase.from('reservations').insert({
-      restaurant_id: restaurant?.id,
-      customer_name: customerName,
-      customer_phone: customerPhone || null,
-      customer_email: resEmail || null,
-      party_size: resGuests,
-      guests: resGuests,
-      reservation_date: resDate,
-      reservation_time: resTime,
-      notes: reservationNotesPayload,
-      status: 'pending',
-    }).select().single();
+      if (existingCheck) {
+        setIsSubmitting(false);
+        alert('Hai già inviato questa prenotazione pocanzi!');
+        return;
+      }
 
-    setIsSubmitting(false);
+      const rwgToken = searchParams.get('rwg_token');
+      const reservationNotesPayload = `${resNotes || ''}${rwgToken ? ` (Ref: rwg_token)` : ''}`;
 
-    if (!error) {
-      if (resEmail) {
+      const { data: insertedRes, error } = await supabase.from('reservations').insert({
+        restaurant_id: restaurant?.id,
+        customer_name: customerName,
+        customer_phone: customerPhone || null,
+        customer_email: resEmail || null,
+        party_size: resGuests,
+        guests: resGuests,
+        reservation_date: resDate,
+        reservation_time: resTime,
+        notes: reservationNotesPayload,
+        status: 'pending',
+      }).select().single();
+
+      if (error) throw error;
+
+      if (resEmail && insertedRes) {
         try {
           await fetch('/api/notify-order', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              orderId: insertedRes?.id,
+              orderId: insertedRes.id,
               customerEmail: resEmail,
               customerName: customerName,
               newStatus: 'pending',
@@ -308,8 +348,10 @@ function PublicPageContent() {
         guests: resGuests,
         notes: resNotes
       });
-    } else {
-      alert(`Errore invio prenotazione: ${error.message}`);
+    } catch (err: any) {
+      alert(`Errore invio prenotazione: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -761,7 +803,7 @@ function PublicPageContent() {
                     disabled={isSubmitting}
                     className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg text-xs uppercase"
                   >
-                    Conferma ed Invia Ordine
+                    {isSubmitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
                   </button>
                 </div>
               </form>
@@ -853,7 +895,7 @@ function PublicPageContent() {
               disabled={isSubmitting}
               className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg uppercase"
             >
-              Invia Prenotazione
+              {isSubmitting ? 'Invio in corso...' : 'Invia Prenotazione'}
             </button>
           </form>
         )}
@@ -891,4 +933,3 @@ export default function PublicPage() {
     </Suspense>
   );
 }
-
