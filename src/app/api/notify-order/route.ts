@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Email cliente non presente, invio saltato.' });
     }
 
-    // Controllo preventivo sul database per evitare invii multipli dello stesso stato
+    // Controllo preventivo corretto per evitare loop o invii ripetuti dello stesso identico stato
     if (orderId) {
       const tableName = type === 'order' ? 'orders' : 'reservations';
       const { data: currentRecord } = await supabase
@@ -44,9 +44,9 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (currentRecord) {
-        // Se l'ordine/prenotazione è già confermato ed è già stata inviata un'email di conferma, blocchiamo i doppioni
-        if (newStatus === 'confirmed' && currentRecord.status === 'confirmed' && currentRecord.email_sent) {
-          return NextResponse.json({ success: true, message: 'Email di conferma già inviata in precedenza.' });
+        // Blocca l'invio solo se stiamo notificando lo stesso stato già registrato E l'email risulta già inviata
+        if (currentRecord.status === newStatus && currentRecord.email_sent) {
+          return NextResponse.json({ success: true, message: 'Email per questo stato già inviata in precedenza.' });
         }
 
         if (type === 'order') {
@@ -165,8 +165,8 @@ export async function POST(request: Request) {
       html: htmlContent,
     });
 
-    // Aggiorniamo il flag sul database per indicare che l'email di conferma è stata inviata con successo
-    if (orderId && newStatus === 'confirmed') {
+    // Impostiamo il flag email_sent su true una volta spedita con successo la notifica
+    if (orderId) {
       const tableName = type === 'order' ? 'orders' : 'reservations';
       await supabase
         .from(tableName)
