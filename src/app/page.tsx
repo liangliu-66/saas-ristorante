@@ -122,7 +122,8 @@ function PublicPageContent() {
   const activeDiscount = discountRules.find((rule) => rawTotal >= Number(rule.min_amount));
   const discountPercent = activeDiscount ? Number(activeDiscount.discount_percentage) : 0;
   const discountAmount = (rawTotal * discountPercent) / 100;
-  const finalTotal = rawTotal - discountAmount;
+  const deliveryFee = orderType === 'delivery' ? Math.max(0, Number(restaurant?.delivery_fee) || 0) : 0;
+  const finalTotal = rawTotal - discountAmount + deliveryFee;
 
   const addToCart = (product: any) => {
     setCart((prev) => {
@@ -198,9 +199,11 @@ function PublicPageContent() {
       }));
 
       const fullPickupTime = `${orderDate} ${pickupTime}`;
-      const orderNotesPayload = generalNotes 
-        ? `${generalNotes}${discountPercent > 0 ? ` [Sconto ${discountPercent}% applicato]` : ''}` 
-        : (discountPercent > 0 ? `[Sconto ${discountPercent}% applicato]` : '');
+      const extraTags = [
+        discountPercent > 0 ? `[Sconto ${discountPercent}% applicato]` : '',
+        deliveryFee > 0 ? `[Consegna €${deliveryFee.toFixed(2)}]` : '',
+      ].filter(Boolean).join(' ');
+      const orderNotesPayload = [generalNotes, extraTags].filter(Boolean).join(' ');
 
       const { data: insertedOrder, error } = await supabase.from('orders').insert({
         restaurant_id: restaurant?.id,
@@ -248,7 +251,8 @@ function PublicPageContent() {
           pickupTime: fullPickupTime,
           items: formattedItems,
           notes: orderNotesPayload,
-          total: finalTotal
+          total: finalTotal,
+          deliveryFee,
         });
         setCart({});
         setGeneralNotes('');
@@ -509,6 +513,12 @@ function PublicPageContent() {
                     </div>
                   ))}
                 </div>
+                {submittedReceipt.deliveryFee > 0 && (
+                  <div className="flex justify-between text-slate-300">
+                    <span>Consegna:</span>
+                    <span>€{Number(submittedReceipt.deliveryFee).toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-amber-400 font-bold text-sm pt-2 border-t border-slate-700 font-sans">
                   <span>Totale:</span>
                   <span>€{submittedReceipt.total.toFixed(2)}</span>
@@ -606,16 +616,25 @@ function PublicPageContent() {
         ) : activeTab === 'order' ? (
           <div className="space-y-6">
             
-            <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center justify-between text-xs">
-              <span className="font-bold text-amber-500 uppercase tracking-wide">Modalità di Ordine:</span>
-              <select
-                value={orderType}
-                onChange={(e) => setOrderType(e.target.value as any)}
-                className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-semibold focus:outline-none focus:border-amber-500"
-              >
-                <option value="takeaway" disabled={!allowTakeaway}>Ritiro d'asporto</option>
-                <option value="delivery" disabled={!allowDelivery}>Consegna a domicilio</option>
-              </select>
+            <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-amber-500 uppercase tracking-wide">Modalità di Ordine:</span>
+                <select
+                  value={orderType}
+                  onChange={(e) => setOrderType(e.target.value as any)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-semibold focus:outline-none focus:border-amber-500"
+                >
+                  <option value="takeaway" disabled={!allowTakeaway}>Ritiro d'asporto</option>
+                  <option value="delivery" disabled={!allowDelivery}>Consegna a domicilio</option>
+                </select>
+              </div>
+              {orderType === 'delivery' && (
+                <p className="text-[11px] text-slate-400">
+                  {deliveryFee > 0
+                    ? `Costo di consegna: €${deliveryFee.toFixed(2)} (aggiunto al totale)`
+                    : 'Consegna a domicilio senza costo aggiuntivo.'}
+                </p>
+              )}
             </div>
 
             {categories.map((catName) => {
@@ -732,6 +751,13 @@ function PublicPageContent() {
                     <div className="flex justify-between text-amber-400 font-bold bg-amber-500/10 p-2 rounded border border-amber-500/20">
                       <span>🎉 Sconto del {discountPercent}% applicato!</span>
                       <span>-€{discountAmount.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {deliveryFee > 0 && (
+                    <div className="flex justify-between text-slate-300">
+                      <span>Consegna a domicilio:</span>
+                      <span>€{deliveryFee.toFixed(2)}</span>
                     </div>
                   )}
 

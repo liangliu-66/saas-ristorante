@@ -183,6 +183,8 @@ export default function MenuPage() {
   };
 
   const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const deliveryFee = orderType === 'delivery' ? Math.max(0, Number(restaurant?.delivery_fee) || 0) : 0;
+  const finalTotal = totalAmount + deliveryFee;
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -206,10 +208,10 @@ export default function MenuPage() {
       customer_email: customerEmail,
       order_type: orderType,
       items: cart,
-      total_amount: totalAmount,
+      total_amount: finalTotal,
       pickup_date: todayDate,
       pickup_time: pickupTime,
-      notes: generalNotes,
+      notes: [generalNotes, deliveryFee > 0 ? `[Consegna €${deliveryFee.toFixed(2)}]` : ''].filter(Boolean).join(' '),
       status: 'pending',
     };
 
@@ -234,7 +236,7 @@ export default function MenuPage() {
             pickupTime: pickupTime,
             type: 'order',
             restaurantName: restaurant?.name,
-            totalAmount: totalAmount,
+            totalAmount: finalTotal,
             items: cart,
           }),
         });
@@ -481,9 +483,17 @@ export default function MenuPage() {
                 ))}
               </div>
 
-              <div className="border-t border-slate-700 pt-3 flex justify-between font-bold text-sm">
-                <span>Totale:</span>
-                <span className="text-emerald-400 font-mono">€ {totalAmount.toFixed(2)}</span>
+              <div className="border-t border-slate-700 pt-3 space-y-1 text-sm">
+                {deliveryFee > 0 && (
+                  <div className="flex justify-between text-xs text-slate-300">
+                    <span>Consegna a domicilio:</span>
+                    <span className="font-mono">€ {deliveryFee.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold">
+                  <span>Totale:</span>
+                  <span className="text-emerald-400 font-mono">€ {finalTotal.toFixed(2)}</span>
+                </div>
               </div>
 
               <form onSubmit={handleCheckout} className="space-y-4 pt-2">

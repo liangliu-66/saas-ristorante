@@ -236,6 +236,23 @@ export default function SettingsPage() {
                 <span className="text-xs font-semibold">Abilita Consegna</span>
               </label>
 
+              {allowDelivery && (
+                <div className="ml-7 space-y-1">
+                  <label className="block text-slate-400 text-xs">Costo di consegna (€)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={deliveryFee}
+                    onChange={(e) => setDeliveryFee(e.target.value)}
+                    className="w-full max-w-xs bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Questo importo viene aggiunto al totale solo se il cliente sceglie la consegna.
+                  </p>
+                </div>
+              )}
+
               <label className="flex items-center gap-3 cursor-pointer">
                 <input 
                   type="checkbox" 

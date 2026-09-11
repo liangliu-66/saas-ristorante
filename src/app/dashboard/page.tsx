@@ -482,8 +482,8 @@ export default function LiveDashboardPage() {
 
     return (
       <div key={item.id} className="bg-slate-900/90 hover:bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md transition-all space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <h3 className="font-bold text-base text-white">{item.customer_name}</h3>
             
             {item.type === 'reservation' && (
@@ -512,17 +512,18 @@ export default function LiveDashboardPage() {
             {item.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded text-xs font-semibold">Annullato</span>}
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          {/* Pulsanti Azione Allineati */}
+          <div className="flex items-center gap-2 flex-wrap justify-start sm:justify-end">
             <button
               onClick={() => openEditModal(item)}
-              className="text-xs font-bold px-3.5 py-1.5 rounded-lg transition border bg-slate-800 hover:bg-slate-700 text-amber-400 border-slate-700"
+              className="text-xs font-bold px-3 py-2 rounded-lg transition border bg-slate-800 hover:bg-slate-700 text-amber-400 border-slate-700"
             >
               Modifica
             </button>
 
             <button
               onClick={() => handleStatusChange(item.id, item.type, 'confirmed')}
-              className={`text-xs font-bold px-3.5 py-1.5 rounded-lg transition border ${
+              className={`text-xs font-bold px-3 py-2 rounded-lg transition border ${
                 item.status === 'confirmed' 
                   ? 'bg-blue-600 text-white border-blue-500 shadow' 
                   : 'bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-blue-500/30'
@@ -533,7 +534,7 @@ export default function LiveDashboardPage() {
 
             <button
               onClick={() => handleStatusChange(item.id, item.type, 'completed')}
-              className={`text-xs font-bold px-3.5 py-1.5 rounded-lg transition border ${
+              className={`text-xs font-bold px-3 py-2 rounded-lg transition border ${
                 item.status === 'completed' 
                   ? 'bg-emerald-600 text-white border-emerald-500 shadow' 
                   : 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border-emerald-500/30'
@@ -544,7 +545,7 @@ export default function LiveDashboardPage() {
 
             <button
               onClick={() => handleStatusChange(item.id, item.type, 'cancelled')}
-              className={`text-xs font-bold px-3.5 py-1.5 rounded-lg transition border ${
+              className={`text-xs font-bold px-3 py-2 rounded-lg transition border ${
                 item.status === 'cancelled' 
                   ? 'bg-red-600 text-white border-red-500 shadow' 
                   : 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border-red-500/30'
