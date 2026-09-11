@@ -425,7 +425,7 @@ export default function LiveDashboardPage() {
       .insert([{
         restaurant_id: restaurant.id,
         customer_name: manualName,
-        customer_phone: manualPhone || null,
+        customer_phone: manualPhone ? manualPhone : 'N/D',
         reservation_date: manualDate,
         reservation_time: manualTime,
         guests: manualGuests,
