@@ -482,28 +482,11 @@ export default function LiveDashboardPage() {
 
     return (
       <div key={item.id} className="bg-slate-900/90 hover:bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md transition-all space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <h3 className="font-bold text-base text-white">{item.customer_name}</h3>
-            
-            {item.type === 'reservation' && (
-              <span className="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1 rounded-md text-xs font-medium">
-                {numPeople} {numPeople === 1 ? 'persona' : 'persone'}
-              </span>
-            )}
+        {/* Prima riga: Nominativo e Stato */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h3 className="font-bold text-base text-white">{item.customer_name}</h3>
 
-            {item.type === 'order' && (
-              <span className="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1 rounded-md text-xs font-medium uppercase tracking-wider">
-                {item.order_type === 'delivery' ? 'Consegna' : 'Ritiro'}
-              </span>
-            )}
-
-            <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-3 py-1 rounded-md text-xs font-bold text-slate-200">
-              <span>{item.date}</span>
-              <span className="text-slate-500">|</span>
-              <span>{item.time}</span>
-            </div>
-
+          <div className="flex items-center gap-2">
             {item.status === 'pending' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded text-xs font-semibold animate-pulse">Da Confermare</span>}
             {item.status === 'confirmed' && <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded text-xs font-semibold">Confermato</span>}
             {item.status === 'preparing' && <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-1 rounded text-xs font-semibold">In Corso</span>}
@@ -511,51 +494,30 @@ export default function LiveDashboardPage() {
             {item.status === 'completed' && <span className="bg-slate-800 text-slate-400 border border-slate-700 px-2.5 py-1 rounded text-xs font-semibold">Completato</span>}
             {item.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded text-xs font-semibold">Annullato</span>}
           </div>
+        </div>
 
-          {/* Pulsanti Azione Allineati */}
-          <div className="flex items-center gap-2 flex-wrap justify-start sm:justify-end">
-            <button
-              onClick={() => openEditModal(item)}
-              className="text-xs font-bold px-3 py-2 rounded-lg transition border bg-slate-800 hover:bg-slate-700 text-amber-400 border-slate-700"
-            >
-              Modifica
-            </button>
+        {/* Seconda riga: Numero persone, Data e Ora */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {item.type === 'reservation' && (
+            <span className="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg font-medium">
+              {numPeople} {numPeople === 1 ? 'persona' : 'persone'}
+            </span>
+          )}
 
-            <button
-              onClick={() => handleStatusChange(item.id, item.type, 'confirmed')}
-              className={`text-xs font-bold px-3 py-2 rounded-lg transition border ${
-                item.status === 'confirmed' 
-                  ? 'bg-blue-600 text-white border-blue-500 shadow' 
-                  : 'bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-blue-500/30'
-              }`}
-            >
-              Conferma
-            </button>
+          {item.type === 'order' && (
+            <span className="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg font-medium uppercase tracking-wider">
+              {item.order_type === 'delivery' ? 'Consegna' : 'Ritiro'}
+            </span>
+          )}
 
-            <button
-              onClick={() => handleStatusChange(item.id, item.type, 'completed')}
-              className={`text-xs font-bold px-3 py-2 rounded-lg transition border ${
-                item.status === 'completed' 
-                  ? 'bg-emerald-600 text-white border-emerald-500 shadow' 
-                  : 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border-emerald-500/30'
-              }`}
-            >
-              Completato
-            </button>
-
-            <button
-              onClick={() => handleStatusChange(item.id, item.type, 'cancelled')}
-              className={`text-xs font-bold px-3 py-2 rounded-lg transition border ${
-                item.status === 'cancelled' 
-                  ? 'bg-red-600 text-white border-red-500 shadow' 
-                  : 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border-red-500/30'
-              }`}
-            >
-              Annulla
-            </button>
+          <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg font-bold text-slate-200">
+            <span>{item.date}</span>
+            <span className="text-slate-500">|</span>
+            <span>{item.time}</span>
           </div>
         </div>
 
+        {/* Contatti e Note */}
         <div className="space-y-2 pt-2 border-t border-slate-800/80">
           <div className="text-sm text-slate-300 flex flex-wrap items-center gap-4">
             <span>Tel: {item.customer_phone || 'N/D'}</span>
@@ -594,6 +556,49 @@ export default function LiveDashboardPage() {
             </div>
           </div>
         )}
+
+        {/* Terza riga: Pulsanti di azione uniformati e allineati */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800/80">
+          <button
+            onClick={() => openEditModal(item)}
+            className="text-xs font-bold py-2 px-3 rounded-lg transition border bg-slate-800 hover:bg-slate-700 text-amber-400 border-slate-700 text-center"
+          >
+            Modifica
+          </button>
+
+          <button
+            onClick={() => handleStatusChange(item.id, item.type, 'confirmed')}
+            className={`text-xs font-bold py-2 px-3 rounded-lg transition border text-center ${
+              item.status === 'confirmed' 
+                ? 'bg-blue-600 text-white border-blue-500 shadow' 
+                : 'bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-blue-500/30'
+            }`}
+          >
+            Conferma
+          </button>
+
+          <button
+            onClick={() => handleStatusChange(item.id, item.type, 'completed')}
+            className={`text-xs font-bold py-2 px-3 rounded-lg transition border text-center ${
+              item.status === 'completed' 
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow' 
+                : 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border-emerald-500/30'
+            }`}
+          >
+            Completato
+          </button>
+
+          <button
+            onClick={() => handleStatusChange(item.id, item.type, 'cancelled')}
+            className={`text-xs font-bold py-2 px-3 rounded-lg transition border text-center ${
+              item.status === 'cancelled' 
+                ? 'bg-red-600 text-white border-red-500 shadow' 
+                : 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border-red-500/30'
+            }`}
+          >
+            Annulla
+          </button>
+        </div>
       </div>
     );
   };
