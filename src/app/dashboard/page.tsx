@@ -148,6 +148,7 @@ export default function LiveDashboardPage() {
                 type: 'reservation' 
               };
               setReservationsList((prev) => {
+                if (prev.some((r) => r.id === newRes.id)) return prev;
                 const updated = [...prev, newRes].sort((a, b) => (a.time > b.time ? 1 : -1));
                 updatePendingFutureCheck(ordersList, updated);
                 return updated;
@@ -420,7 +421,7 @@ export default function LiveDashboardPage() {
     if (!manualName || !manualDate || !manualTime || !restaurant) return;
 
     setManualSubmitting(true);
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('reservations')
       .insert([{
         restaurant_id: restaurant.id,
@@ -432,18 +433,9 @@ export default function LiveDashboardPage() {
         party_size: manualGuests,
         notes: manualNotes,
         status: 'confirmed',
-      }])
-      .select()
-      .single();
+      }]);
 
-    if (!error && data) {
-      const newRes: OrderItem = {
-        ...data,
-        date: data.reservation_date,
-        time: data.reservation_time || '12:00',
-        type: 'reservation',
-      };
-      setReservationsList((prev) => [...prev, newRes].sort((a, b) => (a.time > b.time ? 1 : -1)));
+    if (!error) {
       setShowAddModal(false);
       setManualName('');
       setManualPhone('');
