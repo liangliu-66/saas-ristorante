@@ -482,39 +482,65 @@ export default function LiveDashboardPage() {
 
     return (
       <div key={item.id} className="bg-slate-900/90 hover:bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md transition-all space-y-4">
-        {/* Prima riga: Nominativo e Stato */}
+        {/* Prima riga: Nominativo e Selettore di Stato Rapido */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h3 className="font-bold text-base text-white">{item.customer_name}</h3>
 
           <div className="flex items-center gap-2">
-            {item.status === 'pending' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded text-xs font-semibold animate-pulse">Da Confermare</span>}
-            {item.status === 'confirmed' && <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded text-xs font-semibold">Confermato</span>}
-            {item.status === 'preparing' && <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-1 rounded text-xs font-semibold">In Corso</span>}
-            {item.status === 'ready' && <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded text-xs font-semibold">Pronto</span>}
-            {item.status === 'completed' && <span className="bg-slate-800 text-slate-400 border border-slate-700 px-2.5 py-1 rounded text-xs font-semibold">Completato</span>}
-            {item.status === 'cancelled' && <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded text-xs font-semibold">Annullato</span>}
+            <select
+              value={item.status}
+              onChange={(e) => handleStatusChange(item.id, item.type, e.target.value as OrderItem['status'])}
+              className={`text-xs font-bold px-3 py-1.5 rounded-lg border cursor-pointer focus:outline-none transition ${
+                item.status === 'pending' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                item.status === 'confirmed' ? 'bg-blue-600 text-white border-blue-500' :
+                item.status === 'preparing' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' :
+                item.status === 'ready' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                item.status === 'completed' ? 'bg-emerald-600 text-white border-emerald-500' :
+                'bg-red-600 text-white border-red-500'
+              }`}
+            >
+              <option value="pending" className="bg-slate-950 text-amber-400">Da Confermare</option>
+              <option value="confirmed" className="bg-slate-950 text-blue-400">Confermato</option>
+              {item.type === 'order' && (
+                <>
+                  <option value="preparing" className="bg-slate-950 text-purple-400">In Corso</option>
+                  <option value="ready" className="bg-slate-950 text-emerald-400">Pronto</option>
+                </>
+              )}
+              <option value="completed" className="bg-slate-950 text-emerald-400">Completato</option>
+              <option value="cancelled" className="bg-slate-950 text-red-400">Annullato</option>
+            </select>
           </div>
         </div>
 
-        {/* Seconda riga: Numero persone, Data e Ora */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {item.type === 'reservation' && (
-            <span className="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg font-medium">
-              {numPeople} {numPeople === 1 ? 'persona' : 'persone'}
-            </span>
-          )}
+        {/* Seconda riga: Dettagli (Persone/Asporto, Data/Ora) e Pulsante Modifica */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {item.type === 'reservation' && (
+              <span className="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg font-medium">
+                {numPeople} {numPeople === 1 ? 'persona' : 'persone'}
+              </span>
+            )}
 
-          {item.type === 'order' && (
-            <span className="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg font-medium uppercase tracking-wider">
-              {item.order_type === 'delivery' ? 'Consegna' : 'Ritiro'}
-            </span>
-          )}
+            {item.type === 'order' && (
+              <span className="bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg font-medium uppercase tracking-wider">
+                {item.order_type === 'delivery' ? 'Consegna' : 'Ritiro'}
+              </span>
+            )}
 
-          <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg font-bold text-slate-200">
-            <span>{item.date}</span>
-            <span className="text-slate-500">|</span>
-            <span>{item.time}</span>
+            <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg font-bold text-slate-200">
+              <span>{item.date}</span>
+              <span className="text-slate-500">|</span>
+              <span>{item.time}</span>
+            </div>
           </div>
+
+          <button
+            onClick={() => openEditModal(item)}
+            className="text-xs font-bold px-3 py-1.5 rounded-lg transition border bg-slate-800 hover:bg-slate-700 text-amber-400 border-slate-700"
+          >
+            Modifica
+          </button>
         </div>
 
         {/* Contatti e Note */}
@@ -556,49 +582,6 @@ export default function LiveDashboardPage() {
             </div>
           </div>
         )}
-
-        {/* Terza riga: Pulsanti di azione uniformati e allineati */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800/80">
-          <button
-            onClick={() => openEditModal(item)}
-            className="text-xs font-bold py-2 px-3 rounded-lg transition border bg-slate-800 hover:bg-slate-700 text-amber-400 border-slate-700 text-center"
-          >
-            Modifica
-          </button>
-
-          <button
-            onClick={() => handleStatusChange(item.id, item.type, 'confirmed')}
-            className={`text-xs font-bold py-2 px-3 rounded-lg transition border text-center ${
-              item.status === 'confirmed' 
-                ? 'bg-blue-600 text-white border-blue-500 shadow' 
-                : 'bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-blue-500/30'
-            }`}
-          >
-            Conferma
-          </button>
-
-          <button
-            onClick={() => handleStatusChange(item.id, item.type, 'completed')}
-            className={`text-xs font-bold py-2 px-3 rounded-lg transition border text-center ${
-              item.status === 'completed' 
-                ? 'bg-emerald-600 text-white border-emerald-500 shadow' 
-                : 'bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border-emerald-500/30'
-            }`}
-          >
-            Completato
-          </button>
-
-          <button
-            onClick={() => handleStatusChange(item.id, item.type, 'cancelled')}
-            className={`text-xs font-bold py-2 px-3 rounded-lg transition border text-center ${
-              item.status === 'cancelled' 
-                ? 'bg-red-600 text-white border-red-500 shadow' 
-                : 'bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border-red-500/30'
-            }`}
-          >
-            Annulla
-          </button>
-        </div>
       </div>
     );
   };
