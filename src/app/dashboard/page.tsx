@@ -8,7 +8,7 @@ import Link from 'next/link';
 interface OrderItem {
   id: string;
   customer_name: string;
-  customer_phone: string;
+  customer_phone?: string;
   customer_email?: string;
   notes?: string;
   items?: Array<{ name: string; quantity: number; price?: number; itemNote?: string }>;
@@ -45,6 +45,16 @@ export default function LiveDashboardPage() {
   const [editGuests, setEditGuests] = useState(1);
   const [editNotes, setEditNotes] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Stato per la modale di inserimento manuale prenotazione
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
+  const [manualDate, setManualDate] = useState(todayDate);
+  const [manualTime, setManualTime] = useState('20:00');
+  const [manualGuests, setManualGuests] = useState(2);
+  const [manualNotes, setManualNotes] = useState('');
+  const [manualSubmitting, setManualSubmitting] = useState(false);
 
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
@@ -405,6 +415,46 @@ export default function LiveDashboardPage() {
     setSavingEdit(false);
   };
 
+  const handleAddManualReservation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualName || !manualDate || !manualTime || !restaurant) return;
+
+    setManualSubmitting(true);
+    const { data, error } = await supabase
+      .from('reservations')
+      .insert([{
+        restaurant_id: restaurant.id,
+        customer_name: manualName,
+        customer_phone: manualPhone || null,
+        reservation_date: manualDate,
+        reservation_time: manualTime,
+        guests: manualGuests,
+        party_size: manualGuests,
+        notes: manualNotes,
+        status: 'confirmed',
+      }])
+      .select()
+      .single();
+
+    if (!error && data) {
+      const newRes: OrderItem = {
+        ...data,
+        date: data.reservation_date,
+        time: data.reservation_time || '12:00',
+        type: 'reservation',
+      };
+      setReservationsList((prev) => [...prev, newRes].sort((a, b) => (a.time > b.time ? 1 : -1)));
+      setShowAddModal(false);
+      setManualName('');
+      setManualPhone('');
+      setManualNotes('');
+      setManualGuests(2);
+    } else {
+      alert(`Errore inserimento prenotazione: ${error?.message}`);
+    }
+    setManualSubmitting(false);
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
@@ -684,30 +734,41 @@ export default function LiveDashboardPage() {
         )}
 
         <div className="bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="grid grid-cols-2 sm:flex gap-3 text-sm">
-            <button
-              onClick={() => setActiveTab('orders')}
-              className={`px-4 py-3 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-2.5 ${
-                activeTab === 'orders' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <span>Ordini</span>
-              <span className="bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-md text-xs font-black shadow-sm">
-                {ordersList.filter(o => o.date === selectedDate).length}
-              </span>
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="grid grid-cols-2 sm:flex gap-3 text-sm">
+              <button
+                onClick={() => setActiveTab('orders')}
+                className={`px-4 py-3 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-2.5 ${
+                  activeTab === 'orders' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <span>Ordini</span>
+                <span className="bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-md text-xs font-black shadow-sm">
+                  {ordersList.filter(o => o.date === selectedDate).length}
+                </span>
+              </button>
 
-            <button
-              onClick={() => setActiveTab('reservations')}
-              className={`px-4 py-3 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-2.5 ${
-                activeTab === 'reservations' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              <span>Prenotazioni</span>
-              <span className="bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-md text-xs font-black shadow-sm">
-                {reservationsList.filter(r => r.date === selectedDate).length}
-              </span>
-            </button>
+              <button
+                onClick={() => setActiveTab('reservations')}
+                className={`px-4 py-3 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-2.5 ${
+                  activeTab === 'reservations' ? 'bg-slate-800 text-white shadow-md border border-slate-700' : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                <span>Prenotazioni</span>
+                <span className="bg-amber-500 text-slate-950 px-2.5 py-0.5 rounded-md text-xs font-black shadow-sm">
+                  {reservationsList.filter(r => r.date === selectedDate).length}
+                </span>
+              </button>
+            </div>
+
+            {activeTab === 'reservations' && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-3 rounded-xl text-xs transition shadow-md whitespace-nowrap"
+              >
+                + Nuova Prenotazione
+              </button>
+            )}
           </div>
 
           <div className="flex items-center justify-between sm:justify-start gap-3">
@@ -816,6 +877,7 @@ export default function LiveDashboardPage() {
 
       </main>
 
+      {/* Modale Modifica Elemento */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 space-y-5 shadow-2xl">
@@ -912,6 +974,119 @@ export default function LiveDashboardPage() {
                   className="w-1/2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-3 rounded-xl transition"
                 >
                   {savingEdit ? 'Salvataggio...' : 'Salva Modifiche'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modale Nuova Prenotazione Manuale */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 space-y-5 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h2 className="text-base font-bold text-amber-400">Nuova Prenotazione Manuale</h2>
+              <button 
+                onClick={() => setShowAddModal(false)}
+                className="text-slate-400 hover:text-white text-sm font-bold px-2 py-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddManualReservation} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="text-slate-400 font-semibold block">Nome Cliente *</label>
+                <input
+                  type="text"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  placeholder="Es. Mario Rossi"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-400 font-semibold block">Telefono (Opzionale)</label>
+                <input
+                  type="tel"
+                  value={manualPhone}
+                  onChange={(e) => setManualPhone(e.target.value)}
+                  placeholder="Es. 3331234567"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-semibold block">Data *</label>
+                  <input
+                    type="date"
+                    value={manualDate}
+                    onChange={(e) => setManualDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-semibold block">Orario *</label>
+                  <input
+                    type="time"
+                    value={manualTime}
+                    onChange={(e) => setManualTime(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-400 font-semibold block">Numero Persone (Coperti) *</label>
+                <select
+                  value={manualGuests}
+                  onChange={(e) => setManualGuests(parseInt(e.target.value, 10))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                  required
+                >
+                  {[...Array(20)].map((_, i) => {
+                    const num = i + 1;
+                    return (
+                      <option key={num} value={num} className="bg-slate-950 text-white">
+                        {num} {num === 1 ? 'persona' : 'persone'}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-400 font-semibold block">Note / Richieste</label>
+                <textarea
+                  rows={3}
+                  value={manualNotes}
+                  onChange={(e) => setManualNotes(e.target.value)}
+                  placeholder="Eventuali intolleranze o richieste particolari..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="w-1/2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl transition"
+                >
+                  Annulla
+                </button>
+                <button
+                  type="submit"
+                  disabled={manualSubmitting}
+                  className="w-1/2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-3 rounded-xl transition"
+                >
+                  {manualSubmitting ? 'Salvataggio...' : 'Crea Prenotazione'}
                 </button>
               </div>
             </form>
