@@ -63,7 +63,7 @@ function PublicPageContent() {
       try {
         const [restRes, prodRes, promoRes, discRes] = await Promise.allSettled([
           supabase.from('restaurants').select('*').limit(1).maybeSingle(),
-          supabase.from('products').select('*'),
+          supabase.from('products').select('*').eq('is_available', true),
           supabase.from('promotions').select('*'),
           supabase.from('discount_rules').select('*')
         ]);
@@ -71,6 +71,8 @@ function PublicPageContent() {
         if (!isMounted) return;
 
         let restData = null;
+        let validCatIds = new Set<string>();
+
         if (restRes.status === 'fulfilled' && restRes.value.data) {
           restData = restRes.value.data;
           setRestaurant(restData);
@@ -93,29 +95,40 @@ function PublicPageContent() {
             setResTime('19:00');
           }
 
-          // Caricamento categorie collegate al ristorante
+          // Caricamento categorie collegate al ristorante escludendo rigorosamente TRASH
           const { data: catData } = await supabase
             .from('categories')
             .select('id, name')
             .eq('restaurant_id', restData.id);
 
           if (catData && catData.length > 0) {
-            setCategories(catData);
+            const filteredCats = catData.filter((c: any) => c.name.toUpperCase() !== 'TRASH');
+            setCategories(filteredCats);
+            filteredCats.forEach(c => validCatIds.add(c.id));
           } else {
-            // Fallback se non ci sono categorie salvate
-            setCategories([
+            const fallbackCats = [
               { id: '1', name: 'Antipasti' },
               { id: '2', name: 'Primi' },
               { id: '3', name: 'Secondi' },
               { id: '4', name: 'Pizza' },
               { id: '5', name: 'Dolci' },
               { id: '6', name: 'Bevande' }
-            ]);
+            ];
+            setCategories(fallbackCats);
+            fallbackCats.forEach(c => validCatIds.add(c.id));
           }
         }
 
         if (prodRes.status === 'fulfilled' && prodRes.value.data) {
-          setProducts(prodRes.value.data);
+          // Filtra via i prodotti appartenenti alla categoria TRASH o orfani di categorie valide
+          const rawProducts = prodRes.value.data;
+          const filteredProducts = rawProducts.filter((p: any) => {
+            if (p.category_id) {
+              return validCatIds.has(p.category_id);
+            }
+            return p.category && p.category.toUpperCase() !== 'TRASH';
+          });
+          setProducts(filteredProducts);
         }
 
         if (promoRes.status === 'fulfilled' && promoRes.value.data) {
