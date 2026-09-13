@@ -5,12 +5,19 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+interface CategoryItem {
+  id: string;
+  name: string;
+  display_order?: number;
+}
+
 interface Product {
   id: string;
   name: string;
   description: string;
   price: number;
-  category: string;
+  category?: string;
+  category_id?: string | null;
   image_url: string | null;
   is_available: boolean;
 }
@@ -32,7 +39,7 @@ export default function MenuPage() {
 
   const [restaurant, setRestaurant] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOwnerView, setIsOwnerView] = useState(false);
 
@@ -47,16 +54,29 @@ export default function MenuPage() {
   const [submitting, setSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
-  // Stato pannello admin (se proprietario)
+  // Stato pannello admin (Gestione Categorie)
   const [newCatInput, setNewCatInput] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [price, setPrice] = useState('');
-  const [category, setCategory] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatName, setEditingCatName] = useState('');
+  const [showTrashView, setShowTrashView] = useState(false);
+
+  // Stato Aggiunta Nuovo Piatto (Top Admin)
+  const [newName, setNewName] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [newPrice, setNewPrice] = useState('');
+  const [newSelectedCatId, setNewSelectedCatId] = useState<string>('');
+  const [newImageFile, setNewImageFile] = useState<File | null>(null);
+  const [newImagePreview, setNewImagePreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Stato Modifica Inline Piatto
+  const [inlineEditingProdId, setInlineEditingProdId] = useState<string | null>(null);
+  const [editProdName, setEditProdName] = useState('');
+  const [editProdDesc, setEditProdDesc] = useState('');
+  const [editProdPrice, setEditProdPrice] = useState('');
+  const [editProdCatId, setEditProdCatId] = useState('');
+  const [editProdImageFile, setEditProdImageFile] = useState<File | null>(null);
+  const [editProdImagePreview, setEditProdImagePreview] = useState<string | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -111,12 +131,13 @@ export default function MenuPage() {
   const fetchPublicData = async (restaurantId: string) => {
     const { data: catData } = await supabase
       .from('categories')
-      .select('*')
-      .eq('restaurant_id', restaurantId);
+      .select('id, name, display_order')
+      .eq('restaurant_id', restaurantId)
+      .order('display_order', { ascending: true });
 
-    const catList = catData && catData.length > 0 
-      ? catData.map((c: any) => c.name) 
-      : ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
+    const catList: CategoryItem[] = catData && catData.length > 0 
+      ? catData.filter(c => c.name !== 'TRASH') 
+      : [{ id: 'default', name: 'Antipasti' }];
     setCategories(catList);
 
     const { data: prodData } = await supabase
@@ -131,15 +152,27 @@ export default function MenuPage() {
   const fetchAdminData = async (restaurantId: string) => {
     const { data: catData } = await supabase
       .from('categories')
-      .select('*')
-      .eq('restaurant_id', restaurantId);
+      .select('id, name, display_order')
+      .eq('restaurant_id', restaurantId)
+      .order('display_order', { ascending: true });
 
-    const catList = catData && catData.length > 0 
-      ? catData.map((c: any) => c.name) 
-      : ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
-      
-    setCategories(catList);
-    setCategory(catList[0] || 'Antipasti');
+    let cats: CategoryItem[] = catData || [];
+    
+    // Assicura l'esistenza della categoria TRASH per l'admin
+    if (!cats.some(c => c.name === 'TRASH')) {
+      const { data: trashIns } = await supabase
+        .from('categories')
+        .insert([{ restaurant_id: restaurantId, name: 'TRASH', display_order: 999 }])
+        .select()
+        .single();
+      if (trashIns) cats.push(trashIns);
+    }
+
+    setCategories(cats);
+    const nonTrash = cats.filter(c => c.name !== 'TRASH');
+    if (nonTrash.length > 0 && !newSelectedCatId) {
+      setNewSelectedCatId(nonTrash[0].id);
+    }
 
     const { data: prodData } = await supabase
       .from('products')
@@ -188,10 +221,7 @@ export default function MenuPage() {
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Protezione immediata da doppio invio
     if (submitting) return;
-    
     if (cart.length === 0 || !restaurant) return;
     if (!customerName || !customerPhone || !customerEmail || !pickupTime) {
       alert('Compila tutti i campi obbligatori, compreso l\'orario.');
@@ -248,74 +278,100 @@ export default function MenuPage() {
       setCart([]);
     } else {
       alert(`Errore invio ordine: ${error?.message}`);
-      setSubmitting(false); // Riattiva solo in caso di errore
+      setSubmitting(false);
     }
-  };
-
-  const resetForm = () => {
-    setEditingId(null);
-    setName('');
-    setDescription('');
-    setPrice('');
-    setCategory(categories[0] || 'Antipasti');
-    setImageFile(null);
-    setImagePreview(null);
   };
 
   const handleAddCategory = async () => {
     if (!newCatInput.trim() || !restaurant) return;
     const catName = newCatInput.trim();
-    if (categories.includes(catName)) return;
+    if (categories.some(c => c.name.toLowerCase() === catName.toLowerCase())) return;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('categories')
-      .insert([{ restaurant_id: restaurant.id, name: catName }]);
+      .insert([{ restaurant_id: restaurant.id, name: catName, display_order: categories.length }])
+      .select()
+      .single();
 
-    if (!error) {
-      const updated = [...categories, catName];
+    if (!error && data) {
+      const updated = [...categories, data];
       setCategories(updated);
-      setCategory(catName);
+      setNewSelectedCatId(data.id);
       setNewCatInput('');
     } else {
-      alert(`Errore aggiunta categoria: ${error.message}`);
+      alert(`Errore aggiunta categoria: ${error?.message}`);
     }
   };
 
-  const handleDeleteCategory = async (catToDelete: string) => {
-    if (!confirm(`Vuoi davvero eliminare la categoria "${catToDelete}"?`)) return;
+  // ELIMINAZIONE CATEGORIA CON SPOSTAMENTO DEI PIATTI IN TRASH
+  const handleDeleteCategory = async (catId: string, catName: string) => {
+    if (catName === 'TRASH') {
+      alert('Non puoi eliminare la categoria TRASH.');
+      return;
+    }
+    if (!confirm(`Vuoi davvero eliminare la categoria "${catName}"? I piatti associati verranno spostati in TRASH.`)) return;
 
-    const { error } = await supabase
-      .from('categories')
-      .delete()
-      .eq('restaurant_id', restaurant.id)
-      .eq('name', catToDelete);
+    let trashCat = categories.find((c) => c.name === 'TRASH');
+    if (!trashCat) {
+      const { data: tData } = await supabase
+        .from('categories')
+        .insert([{ restaurant_id: restaurant.id, name: 'TRASH', display_order: 999 }])
+        .select()
+        .single();
+      if (tData) {
+        trashCat = tData;
+        setCategories((prev) => [...prev, tData]);
+      }
+    }
+
+    if (trashCat) {
+      await supabase
+        .from('products')
+        .update({ category_id: trashCat.id, category: 'TRASH' })
+        .eq('category_id', catId);
+    }
+
+    const { error } = await supabase.from('categories').delete().eq('id', catId);
 
     if (!error) {
-      const updated = categories.filter((c) => c !== catToDelete);
-      setCategories(updated);
-      if (category === catToDelete && updated.length > 0) {
-        setCategory(updated[0]);
-      }
+      fetchAdminData(restaurant.id);
     } else {
       alert(`Errore eliminazione categoria: ${error.message}`);
     }
   };
 
-  const handleEditClick = (p: Product) => {
-    setEditingId(p.id);
-    setName(p.name);
-    setDescription(p.description || '');
-    setPrice(p.price.toString());
-    setCategory(p.category || categories[0]);
-    setImagePreview(p.image_url);
-    setImageFile(null);
+  const handleUpdateCategory = async (catId: string) => {
+    if (!editingCatName.trim()) return;
+    const { error } = await supabase
+      .from('categories')
+      .update({ name: editingCatName.trim() })
+      .eq('id', catId);
+
+    if (!error) {
+      setCategories(categories.map((c) => c.id === catId ? { ...c, name: editingCatName.trim() } : c));
+      setEditingCatId(null);
+      setEditingCatName('');
+    } else {
+      alert(`Errore aggiornamento: ${error.message}`);
+    }
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+  const handleMoveCategoryOrder = async (index: number, direction: 'up' | 'down') => {
+    const nonTrash = categories.filter((c) => c.name !== 'TRASH');
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= nonTrash.length) return;
+
+    const temp = nonTrash[index];
+    nonTrash[index] = nonTrash[targetIndex];
+    nonTrash[targetIndex] = temp;
+
+    const trashCat = categories.find((c) => c.name === 'TRASH');
+    const updatedAll = trashCat ? [...nonTrash, trashCat] : nonTrash;
+
+    setCategories(updatedAll);
+
+    for (let i = 0; i < updatedAll.length; i++) {
+      await supabase.from('categories').update({ display_order: i }).eq('id', updatedAll[i].id);
     }
   };
 
@@ -332,42 +388,72 @@ export default function MenuPage() {
     return data.publicUrl;
   };
 
-  const handleSaveProduct = async (e: React.FormEvent) => {
+  const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !price || !restaurant) return;
+    if (!newName || !newPrice || !restaurant) return;
     setSaving(true);
 
-    let imageUrl = imagePreview;
-    if (imageFile) {
-      const uploadedUrl = await uploadImage(imageFile);
+    let imageUrl = newImagePreview;
+    if (newImageFile) {
+      const uploadedUrl = await uploadImage(newImageFile);
       if (uploadedUrl) imageUrl = uploadedUrl;
     }
 
-    const payload: any = {
+    const selectedCatObj = categories.find(c => c.id === newSelectedCatId);
+
+    const payload = {
       restaurant_id: restaurant.id,
-      name,
-      description,
-      price: parseFloat(price.replace(',', '.')),
-      category,
+      name: newName,
+      description: newDesc,
+      price: parseFloat(newPrice.replace(',', '.')),
+      category_id: newSelectedCatId || null,
+      category: selectedCatObj ? selectedCatObj.name : null,
       image_url: imageUrl,
+      is_available: true,
     };
 
-    let error;
-    if (editingId) {
-      const res = await supabase.from('products').update(payload).eq('id', editingId);
-      error = res.error;
-    } else {
-      const res = await supabase.from('products').insert([payload]);
-      error = res.error;
-    }
+    const { error } = await supabase.from('products').insert([payload]);
 
     if (!error) {
-      resetForm();
+      setNewName('');
+      setNewDesc('');
+      setNewPrice('');
+      setNewImageFile(null);
+      setNewImagePreview(null);
       fetchAdminData(restaurant.id);
     } else {
       alert(`Errore: ${error.message}`);
     }
     setSaving(false);
+  };
+
+  // SALVATAGGIO MODIFICA INLINE PIATTO
+  const handleSaveInlineEdit = async (productId: string) => {
+    let imageUrl = editProdImagePreview;
+    if (editProdImageFile) {
+      const uploadedUrl = await uploadImage(editProdImageFile);
+      if (uploadedUrl) imageUrl = uploadedUrl;
+    }
+
+    const selectedCatObj = categories.find(c => c.id === editProdCatId);
+
+    const payload = {
+      name: editProdName,
+      description: editProdDesc,
+      price: parseFloat(editProdPrice.replace(',', '.')),
+      category_id: editProdCatId || null,
+      category: selectedCatObj ? selectedCatObj.name : null,
+      image_url: imageUrl,
+    };
+
+    const { error } = await supabase.from('products').update(payload).eq('id', productId);
+
+    if (!error) {
+      setInlineEditingProdId(null);
+      fetchAdminData(restaurant.id);
+    } else {
+      alert(`Errore aggiornamento piatto: ${error.message}`);
+    }
   };
 
   const toggleAvailability = async (id: string, currentStatus: boolean) => {
@@ -380,7 +466,7 @@ export default function MenuPage() {
   };
 
   const handleDeleteProduct = async (id: string) => {
-    if (!confirm('Eliminare questo piatto dal menu?')) return;
+    if (!confirm('Eliminare definitivamente questo piatto?')) return;
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (!error && restaurant) fetchAdminData(restaurant.id);
   };
@@ -418,6 +504,9 @@ export default function MenuPage() {
     );
   }
 
+  const isOrderingDisabled = restaurant.takeaway_enabled === false && restaurant.delivery_enabled === false;
+
+  // --- VISTA CLIENTE ---
   if (!isOwnerView) {
     return (
       <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6 pb-24">
@@ -429,12 +518,15 @@ export default function MenuPage() {
 
           <div className="space-y-6">
             {categories.map((cat) => {
-              const catProducts = products.filter((p) => (p.category || 'Antipasti') === cat);
+              const catProducts = products.filter((p) => {
+                if (p.category_id) return p.category_id === cat.id;
+                return (p.category || '').trim().toLowerCase() === cat.name.trim().toLowerCase();
+              });
               if (catProducts.length === 0) return null;
 
               return (
-                <div key={cat} className="space-y-3">
-                  <h2 className="text-sm font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat}</h2>
+                <div key={cat.id} className="space-y-3">
+                  <h2 className="text-sm font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
                   <div className="grid grid-cols-1 gap-3">
                     {catProducts.map((product) => (
                       <div key={product.id} className="bg-slate-800/80 p-4 rounded-xl border border-slate-700 flex justify-between items-center gap-4">
@@ -449,12 +541,14 @@ export default function MenuPage() {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => addToCart(product)}
-                          className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap transition"
-                        >
-                          Aggiungi
-                        </button>
+                        {!isOrderingDisabled && (
+                          <button
+                            onClick={() => addToCart(product)}
+                            className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap transition"
+                          >
+                            Aggiungi
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -497,8 +591,6 @@ export default function MenuPage() {
               </div>
 
               <form onSubmit={handleCheckout} className="space-y-4 pt-2">
-
-                {/* DATI CLIENTE */}
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">Nome e cognome *</label>
@@ -508,7 +600,6 @@ export default function MenuPage() {
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       placeholder="Inserisci il tuo nome e cognome"
-                      autoComplete="name"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
                   </div>
@@ -521,7 +612,6 @@ export default function MenuPage() {
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
                       placeholder="Inserisci il numero di telefono"
-                      autoComplete="tel"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
                   </div>
@@ -534,25 +624,28 @@ export default function MenuPage() {
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
                       placeholder="Inserisci la tua email"
-                      autoComplete="email"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
-                    <p className="text-[10px] text-slate-500 mt-1">Ti invieremo la conferma dell'ordine a questo indirizzo.</p>
                   </div>
                 </div>
 
-                {/* TIPO ORDINE + ORARIO ORDINI */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">Tipo di ordine</label>
-                    <select
-                      value={orderType}
-                      onChange={(e) => setOrderType(e.target.value as 'takeaway' | 'delivery')}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
-                    >
-                      <option value="takeaway">Ritiro in sede (Asporto)</option>
-                      <option value="delivery">Consegna a domicilio</option>
-                    </select>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Modalità di ordine</label>
+                    {isOrderingDisabled ? (
+                      <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-lg text-center font-bold text-[11px] uppercase tracking-wide">
+                        ASPORTO NON DISPONIBILE SU QUESTA PIATTAFORMA
+                      </div>
+                    ) : (
+                      <select
+                        value={orderType}
+                        onChange={(e) => setOrderType(e.target.value as 'takeaway' | 'delivery')}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                      >
+                        {restaurant.takeaway_enabled !== false && <option value="takeaway">Ritiro in sede (Asporto)</option>}
+                        {restaurant.delivery_enabled !== false && <option value="delivery">Consegna a domicilio</option>}
+                      </select>
+                    )}
                   </div>
 
                   <div>
@@ -571,7 +664,6 @@ export default function MenuPage() {
                   </div>
                 </div>
 
-                {/* NOTE */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Note</label>
                   <textarea
@@ -583,15 +675,13 @@ export default function MenuPage() {
                   />
                 </div>
 
-                {/* PULSANTE */}
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold p-3 rounded-lg text-xs transition uppercase tracking-wider"
+                  disabled={submitting || isOrderingDisabled}
+                  className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-900 font-bold p-3 rounded-lg text-xs transition uppercase tracking-wider"
                 >
                   {submitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
                 </button>
-
               </form>
             </div>
           )}
@@ -605,7 +695,6 @@ export default function MenuPage() {
     <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* Header con pulsante di ritorno uniformato */}
         <header className="flex justify-between items-center bg-slate-800 p-5 rounded-xl border border-slate-700">
           <div>
             <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Gestione Carta</span>
@@ -616,8 +705,20 @@ export default function MenuPage() {
           </Link>
         </header>
 
+        {/* GESTIONE CATEGORIE CON PULSANTE TRASH E RIORDINO */}
         <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-          <h2 className="text-sm font-bold text-amber-500">Gestione Categorie Menu</h2>
+          <div className="flex justify-between items-center border-b border-slate-700 pb-2">
+            <h2 className="text-sm font-bold text-amber-500 uppercase">Gestione Categorie Menu</h2>
+            <button
+              onClick={() => setShowTrashView(!showTrashView)}
+              className={`text-xs px-3 py-1.5 rounded font-bold border transition ${
+                showTrashView ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-amber-400 border-slate-700 hover:bg-slate-700'
+              }`}
+            >
+              🗑️ Categoria TRASH
+            </button>
+          </div>
+
           <div className="flex gap-2">
             <input
               type="text"
@@ -634,163 +735,292 @@ export default function MenuPage() {
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-700/60">
-            {categories.map((cat) => (
-              <div key={cat} className="flex items-center gap-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">
-                <span className="text-white">{cat}</span>
-                <button
-                  onClick={() => handleDeleteCategory(cat)}
-                  className="text-rose-400 hover:text-rose-200 font-bold ml-1 px-1 transition"
-                  title="Elimina categoria"
-                >
-                  ✕
-                </button>
+          <div className="space-y-2 pt-1">
+            {categories.filter(c => c.name !== 'TRASH').map((cat, index, arr) => (
+              <div key={cat.id} className="flex items-center justify-between bg-slate-900 border border-slate-700 px-3 py-2 rounded-lg text-xs font-semibold">
+                {editingCatId === cat.id ? (
+                  <div className="flex items-center gap-2 flex-1 mr-2">
+                    <input
+                      type="text"
+                      value={editingCatName}
+                      onChange={(e) => setEditingCatName(e.target.value)}
+                      className="bg-slate-800 border border-amber-500 rounded p-1 text-white flex-1 text-xs"
+                    />
+                    <button onClick={() => handleUpdateCategory(cat.id)} className="bg-emerald-600 text-white px-2.5 py-1 rounded font-bold">Salva</button>
+                    <button onClick={() => setEditingCatId(null)} className="bg-slate-700 text-white px-2.5 py-1 rounded">Annulla</button>
+                  </div>
+                ) : (
+                  <span className="text-white">{cat.name}</span>
+                )}
+
+                {editingCatId !== cat.id && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleMoveCategoryOrder(index, 'up')}
+                      disabled={index === 0}
+                      className="bg-slate-800 hover:bg-slate-700 disabled:opacity-30 p-1 rounded text-[10px]"
+                      title="Sposta su"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => handleMoveCategoryOrder(index, 'down')}
+                      disabled={index === arr.length - 1}
+                      className="bg-slate-800 hover:bg-slate-700 disabled:opacity-30 p-1 rounded text-[10px]"
+                      title="Sposta giù"
+                    >
+                      ▼
+                    </button>
+                    <button
+                      onClick={() => { setEditingCatId(cat.id); setEditingCatName(cat.name); }}
+                      className="bg-slate-700 hover:bg-slate-600 text-amber-400 px-2.5 py-1 rounded font-bold"
+                    >
+                      Modifica
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                      className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 px-2.5 py-1 rounded font-bold"
+                      title="Elimina categoria"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
 
-        <form onSubmit={handleSaveProduct} className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-amber-500">
-              {editingId ? 'Modifica Piatto' : 'Aggiungi Nuovo Piatto'}
-            </h2>
-            {editingId && (
-              <button type="button" onClick={resetForm} className="text-xs text-slate-400 hover:text-white underline">
-                Annulla Modifica
-              </button>
-            )}
-          </div>
+        {/* FORM AGGIUNTA NUOVO PIATTO (NON VISIBILE SE SI È IN VISTA TRASH) */}
+        {!showTrashView && (
+          <form onSubmit={handleAddProduct} className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+            <h2 className="text-lg font-semibold text-amber-500">Aggiungi Nuovo Piatto</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <input
-              type="text"
-              placeholder="Nome Piatto"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
-              required
-            />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <input
+                type="text"
+                placeholder="Nome Piatto"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+                required
+              />
 
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
-            >
-              {categories.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+              <select
+                value={newSelectedCatId}
+                onChange={(e) => setNewSelectedCatId(e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+              >
+                {categories.filter(c => c.name !== 'TRASH').map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
 
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Prezzo (€)"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
-              required
-            />
-          </div>
-
-          <input
-            type="text"
-            placeholder="Descrizione (opzionale)"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
-          />
-
-          <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
-            <div className="w-full flex items-center gap-3">
-              {imagePreview ? (
-                <img src={imagePreview} alt="Anteprima" className="w-12 h-12 rounded object-cover border border-amber-500" />
-              ) : (
-                <div className="w-12 h-12 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500 text-center">No Img</div>
-              )}
-              
-              <div className="flex-1">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-slate-700 file:text-white"
-                />
-              </div>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Prezzo (€)"
+                value={newPrice}
+                onChange={(e) => setNewPrice(e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+                required
+              />
             </div>
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-6 py-3 rounded-lg transition text-xs whitespace-nowrap self-end"
-            >
-              {saving ? 'Salvataggio...' : editingId ? 'Aggiorna Piatto' : 'Aggiungi al Menu'}
-            </button>
-          </div>
-        </form>
+            <input
+              type="text"
+              placeholder="Descrizione (opzionale)"
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
+            />
 
-        <div className="space-y-6">
-          {categories.map((catName) => {
-            const catProducts = products.filter((p) => (p.category || 'Antipasti') === catName);
-            if (catProducts.length === 0) return null;
-
-            return (
-              <div key={catName} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden space-y-1">
-                <div className="p-4 bg-slate-800/80 border-b border-slate-700 font-bold text-amber-400 text-sm uppercase tracking-wider flex justify-between">
-                  <span>{catName}</span>
-                  <span className="text-xs text-slate-400">({catProducts.length} piatti)</span>
-                </div>
-
-                <div className="divide-y divide-slate-700/60">
-                  {catProducts.map((item) => (
-                    <div key={item.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-4">
-                        {item.image_url ? (
-                          <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded object-cover bg-slate-900" />
-                        ) : (
-                          <div className="w-12 h-12 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-xs text-slate-500">No img</div>
-                        )}
-                        <div>
-                          <h3 className="font-semibold text-base">{item.name}</h3>
-                          <p className="text-xs text-slate-400">{item.description}</p>
-                          <span className="text-amber-500 font-bold text-xs mt-0.5 inline-block">
-                            € {Number(item.price).toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-                        <button
-                          onClick={() => toggleAvailability(item.id, item.is_available ?? true)}
-                          className={`px-3 py-1.5 rounded text-xs font-bold border transition ${
-                            (item.is_available ?? true)
-                              ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30'
-                              : 'bg-rose-600/20 text-rose-400 border-rose-500/30'
-                          }`}
-                        >
-                          {(item.is_available ?? true) ? 'Visibile' : 'Nascosto'}
-                        </button>
-
-                        <button
-                          onClick={() => handleEditClick(item)}
-                          className="px-3 py-1.5 rounded text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white"
-                        >
-                          Modifica
-                        </button>
-
-                        <button
-                          onClick={() => handleDeleteProduct(item.id)}
-                          className="px-3 py-1.5 rounded text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20"
-                        >
-                          Elimina
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+            <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
+              <div className="w-full flex items-center gap-3">
+                {newImagePreview ? (
+                  <img src={newImagePreview} alt="Anteprima" className="w-12 h-12 rounded object-cover border border-amber-500" />
+                ) : (
+                  <div className="w-12 h-12 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-[10px] text-slate-500 text-center">No Img</div>
+                )}
+                
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) { setNewImageFile(file); setNewImagePreview(URL.createObjectURL(file)); }
+                    }}
+                    className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-slate-700 file:text-white"
+                  />
                 </div>
               </div>
-            );
-          })}
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-6 py-3 rounded-lg transition text-xs whitespace-nowrap self-end"
+              >
+                {saving ? 'Salvataggio...' : 'Aggiungi al Menu'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* LISTA CATEGORIE E PIATTI CON MODIFICA INLINE */}
+        <div className="space-y-6">
+          {categories
+            .filter((cat) => showTrashView ? cat.name === 'TRASH' : cat.name !== 'TRASH')
+            .map((cat) => {
+              const catProducts = products.filter((p) => {
+                if (p.category_id) return p.category_id === cat.id;
+                return (p.category || '').trim().toLowerCase() === cat.name.trim().toLowerCase();
+              });
+
+              if (catProducts.length === 0 && !showTrashView) return null;
+
+              return (
+                <div key={cat.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden space-y-1">
+                  <div className="p-4 bg-slate-800/80 border-b border-slate-700 font-bold text-amber-400 text-sm uppercase tracking-wider flex justify-between">
+                    <span>{cat.name === 'TRASH' ? '🗑️ Categoria TRASH (Piatti Orfani)' : cat.name}</span>
+                    <span className="text-xs text-slate-400">({catProducts.length} piatti)</span>
+                  </div>
+
+                  <div className="divide-y divide-slate-700/60">
+                    {catProducts.map((item) => {
+                      const isInlineEditing = inlineEditingProdId === item.id;
+
+                      return (
+                        <div key={item.id} className="p-4 space-y-3">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                              {item.image_url ? (
+                                <img src={item.image_url} alt={item.name} className="w-12 h-12 rounded object-cover bg-slate-900 border border-slate-700" />
+                              ) : (
+                                <div className="w-12 h-12 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-xs text-slate-500">No img</div>
+                              )}
+                              <div>
+                                <h3 className="font-semibold text-base">{item.name}</h3>
+                                <p className="text-xs text-slate-400">{item.description}</p>
+                                <span className="text-amber-500 font-bold text-xs mt-0.5 inline-block">
+                                  € {Number(item.price).toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end text-xs">
+                              <button
+                                onClick={() => toggleAvailability(item.id, item.is_available ?? true)}
+                                className={`px-3 py-1.5 rounded font-bold border transition ${
+                                  (item.is_available ?? true)
+                                    ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30'
+                                    : 'bg-rose-600/20 text-rose-400 border-rose-500/30'
+                                }`}
+                              >
+                                {(item.is_available ?? true) ? 'Visibile' : 'Nascosto'}
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  if (isInlineEditing) {
+                                    setInlineEditingProdId(null);
+                                  } else {
+                                    setInlineEditingProdId(item.id);
+                                    setEditProdName(item.name);
+                                    setEditProdDesc(item.description || '');
+                                    setEditProdPrice(item.price.toString());
+                                    setEditProdCatId(item.category_id || cat.id);
+                                    setEditProdImagePreview(item.image_url);
+                                    setEditProdImageFile(null);
+                                  }
+                                }}
+                                className="px-3 py-1.5 rounded font-semibold bg-slate-700 hover:bg-slate-600 text-white"
+                              >
+                                {isInlineEditing ? 'Chiudi' : 'Modifica'}
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteProduct(item.id)}
+                                className="px-3 py-1.5 rounded font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20"
+                              >
+                                Elimina
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* FORM DI MODIFICA INLINE SUBITO SOTTO IL PIATTO */}
+                          {isInlineEditing && (
+                            <div className="bg-slate-900 border border-amber-500/40 p-4 rounded-xl space-y-3 text-xs mt-3">
+                              <span className="font-bold text-amber-400 block uppercase text-[10px]">Modifica Piatto</span>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <input
+                                  type="text"
+                                  placeholder="Nome Piatto"
+                                  value={editProdName}
+                                  onChange={(e) => setEditProdName(e.target.value)}
+                                  className="bg-slate-800 border border-slate-700 rounded p-2.5 text-white text-xs"
+                                />
+                                <select
+                                  value={editProdCatId}
+                                  onChange={(e) => setEditProdCatId(e.target.value)}
+                                  className="bg-slate-800 border border-slate-700 rounded p-2.5 text-white text-xs"
+                                >
+                                  {categories.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="Prezzo (€)"
+                                  value={editProdPrice}
+                                  onChange={(e) => setEditProdPrice(e.target.value)}
+                                  className="bg-slate-800 border border-slate-700 rounded p-2.5 text-white text-xs"
+                                />
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Descrizione"
+                                value={editProdDesc}
+                                onChange={(e) => setEditProdDesc(e.target.value)}
+                                className="w-full bg-slate-800 border border-slate-700 rounded p-2.5 text-white text-xs"
+                              />
+                              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) { setEditProdImageFile(file); setEditProdImagePreview(URL.createObjectURL(file)); }
+                                  }}
+                                  className="text-slate-400 text-xs w-full"
+                                />
+                                <div className="flex gap-2 w-full sm:w-auto justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => setInlineEditingProdId(null)}
+                                    className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded font-bold text-xs"
+                                  >
+                                    Annulla
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveInlineEdit(item.id)}
+                                    className="bg-amber-500 hover:bg-amber-600 text-slate-900 px-4 py-2 rounded font-bold text-xs whitespace-nowrap"
+                                  >
+                                    Salva Modifiche
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
         </div>
       </div>
     </div>
