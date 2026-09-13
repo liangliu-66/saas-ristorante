@@ -437,7 +437,12 @@ export default function MenuPage() {
 
           <div className="space-y-6">
             {categories.map((cat) => {
-              const catProducts = products.filter((p) => p.category === cat);
+              const catProducts = products.filter((p) => {
+                const prodCat = (p.category || '').trim().toLowerCase();
+                const currentCat = cat.trim().toLowerCase();
+                return prodCat === currentCat;
+              });
+
               if (catProducts.length === 0) return null;
 
               return (
@@ -741,7 +746,12 @@ export default function MenuPage() {
 
         <div className="space-y-6">
           {categories.map((catName) => {
-            const catProducts = products.filter((p) => p.category === catName);
+            const catProducts = products.filter((p) => {
+              const prodCat = (p.category || '').trim().toLowerCase();
+              const currentCat = catName.trim().toLowerCase();
+              return prodCat === currentCat;
+            });
+
             if (catProducts.length === 0) return null;
 
             return (
