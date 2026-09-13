@@ -27,6 +27,7 @@ export default function LiveDashboardPage() {
   const todayDate = new Date().toISOString().split('T')[0];
 
   const [restaurant, setRestaurant] = useState<any>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'viewer'>('admin'); // Aggiunto per i permessi
   const [ordersList, setOrdersList] = useState<OrderItem[]>([]);
   const [reservationsList, setReservationsList] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,23 +78,42 @@ export default function LiveDashboardPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
+      // 1. Cerchiamo se l'utente è il proprietario (admin)
       const { data: restData } = await supabase
         .from('restaurants')
         .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (!restData) { router.push('/onboarding'); return; }
+      let currentRestaurant = restData;
+      let role: 'admin' | 'viewer' = 'admin';
 
-      setRestaurant(restData);
-      await fetchAllData(restData.id);
+      if (!currentRestaurant) {
+        // 2. Se non è il proprietario, verifichiamo se è un membro dello staff nella tabella restaurant_staff
+        const { data: staffData } = await supabase
+          .from('restaurant_staff')
+          .select('*, restaurants(*)')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (staffData && staffData.restaurants) {
+          currentRestaurant = staffData.restaurants;
+          role = staffData.role || 'viewer';
+        }
+      }
+
+      if (!currentRestaurant) { router.push('/onboarding'); return; }
+
+      setRestaurant(currentRestaurant);
+      setUserRole(role);
+      await fetchAllData(currentRestaurant.id);
       setLoading(false);
 
       const ordersChannel = supabase
         .channel('realtime_orders')
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restData.id}` },
+          { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${currentRestaurant.id}` },
           (payload) => {
             if (payload.eventType === 'INSERT') {
               const rawPickup = payload.new.pickup_time || '';
@@ -138,7 +158,7 @@ export default function LiveDashboardPage() {
         .channel('realtime_reservations')
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'reservations', filter: `restaurant_id=eq.${restData.id}` },
+          { event: '*', schema: 'public', table: 'reservations', filter: `restaurant_id=eq.${currentRestaurant.id}` },
           (payload) => {
             if (payload.eventType === 'INSERT') {
               const newRes: OrderItem = { 
@@ -309,6 +329,11 @@ export default function LiveDashboardPage() {
   }, [isAlarmPlaying, audioEnabled]);
 
   const handleStatusChange = async (id: string, type: 'order' | 'reservation', newStatus: OrderItem['status']) => {
+    if (userRole === 'viewer') {
+      alert('Account in sola lettura: non puoi modificare lo stato.');
+      return;
+    }
+
     if (newStatus === 'cancelled') {
       const confirmCancel = window.confirm('Sei sicuro di voler annullare questo elemento?');
       if (!confirmCancel) return;
@@ -360,6 +385,10 @@ export default function LiveDashboardPage() {
   };
 
   const openEditModal = (item: OrderItem) => {
+    if (userRole === 'viewer') {
+      alert('Account in sola lettura: non puoi modificare i dati.');
+      return;
+    }
     setEditingItem(item);
     setEditName(item.customer_name || '');
     setEditDate(item.date || todayDate);
@@ -370,7 +399,7 @@ export default function LiveDashboardPage() {
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingItem) return;
+    if (!editingItem || userRole === 'viewer') return;
 
     setSavingEdit(true);
     const isOrder = editingItem.type === 'order';
@@ -418,7 +447,7 @@ export default function LiveDashboardPage() {
 
   const handleAddManualReservation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualName || !manualDate || !manualTime || !restaurant) return;
+    if (!manualName || !manualDate || !manualTime || !restaurant || userRole === 'viewer') return;
 
     setManualSubmitting(true);
     const { error } = await supabase
@@ -489,8 +518,11 @@ export default function LiveDashboardPage() {
           <div className="flex items-center gap-2">
             <select
               value={item.status}
+              disabled={userRole === 'viewer'}
               onChange={(e) => handleStatusChange(item.id, item.type, e.target.value as OrderItem['status'])}
-              className={`text-xs font-bold px-3 py-1.5 rounded-lg border cursor-pointer focus:outline-none transition ${
+              className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition ${
+                userRole === 'viewer' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer focus:outline-none'
+              } ${
                 item.status === 'pending' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
                 item.status === 'confirmed' ? 'bg-blue-600 text-white border-blue-500' :
                 item.status === 'preparing' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' :
@@ -535,12 +567,14 @@ export default function LiveDashboardPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => openEditModal(item)}
-            className="text-xs font-bold px-3 py-1.5 rounded-lg transition border bg-slate-800 hover:bg-slate-700 text-amber-400 border-slate-700"
-          >
-            Modifica
-          </button>
+          {userRole === 'admin' && (
+            <button
+              onClick={() => openEditModal(item)}
+              className="text-xs font-bold px-3 py-1.5 rounded-lg transition border bg-slate-800 hover:bg-slate-700 text-amber-400 border-slate-700"
+            >
+              Modifica
+            </button>
+          )}
         </div>
 
         {/* Contatti e Note */}
@@ -591,7 +625,9 @@ export default function LiveDashboardPage() {
       
       <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between sticky top-0 z-50">
         <div>
-          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">Dashboard Live</span>
+          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">
+            Dashboard Live {userRole === 'viewer' && '(Sola Lettura)'}
+          </span>
           <h1 className="text-base font-black tracking-tight text-white truncate max-w-[200px]">{restaurant?.name}</h1>
         </div>
 
@@ -628,7 +664,9 @@ export default function LiveDashboardPage() {
       >
         <div className="space-y-6 pt-12 md:pt-0">
           <div className="hidden md:block">
-            <span className="text-xs text-slate-400 font-bold uppercase tracking-widest block">Dashboard Live</span>
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-widest block">
+              Dashboard Live {userRole === 'viewer' && <span className="text-amber-400 font-semibold">(Sola Lettura)</span>}
+            </span>
             <h1 className="text-xl font-black tracking-tight text-white mt-1 truncate">{restaurant?.name}</h1>
           </div>
 
@@ -641,21 +679,25 @@ export default function LiveDashboardPage() {
               <span>Visualizza Menu Pubblico</span>
             </Link>
 
-            <Link 
-              href="/dashboard/promotions" 
-              onClick={() => setIsSidebarOpen(false)}
-              className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
-            >
-              <span>Gestione Promozioni</span>
-            </Link>
+            {userRole === 'admin' && (
+              <>
+                <Link 
+                  href="/dashboard/promotions" 
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
+                >
+                  <span>Gestione Promozioni</span>
+                </Link>
 
-            <Link 
-              href="/dashboard/settings" 
-              onClick={() => setIsSidebarOpen(false)}
-              className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
-            >
-              <span>Impostazioni Ristorante</span>
-            </Link>
+                <Link 
+                  href="/dashboard/settings" 
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-200 transition-colors border border-slate-700/50"
+                >
+                  <span>Impostazioni Ristorante</span>
+                </Link>
+              </>
+            )}
           </nav>
         </div>
 
@@ -742,7 +784,7 @@ export default function LiveDashboardPage() {
               </button>
             </div>
 
-            {activeTab === 'reservations' && (
+            {activeTab === 'reservations' && userRole === 'admin' && (
               <button
                 onClick={() => setShowAddModal(true)}
                 className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-3 rounded-xl text-xs transition shadow-md whitespace-nowrap"
@@ -859,7 +901,7 @@ export default function LiveDashboardPage() {
       </main>
 
       {/* Modale Modifica Elemento */}
-      {editingItem && (
+      {editingItem && userRole === 'admin' && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 space-y-5 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
@@ -963,7 +1005,7 @@ export default function LiveDashboardPage() {
       )}
 
       {/* Modale Nuova Prenotazione Manuale */}
-      {showAddModal && (
+      {showAddModal && userRole === 'admin' && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl p-6 space-y-5 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
@@ -1033,13 +1075,13 @@ export default function LiveDashboardPage() {
                   required
                 >
                   {[...Array(20)].map((_, i) => {
-                    const num = i + 1;
-                    return (
-                      <option key={num} value={num} className="bg-slate-950 text-white">
-                        {num} {num === 1 ? 'persona' : 'persone'}
-                      </option>
-                    );
-                  })}
+  const num = i + 1;
+  return (
+    <option key={num} value={num} className="bg-slate-950 text-white">
+      {num} {num === 1 ? 'persona' : 'persone'}
+    </option>
+  );
+})}
                 </select>
               </div>
 
