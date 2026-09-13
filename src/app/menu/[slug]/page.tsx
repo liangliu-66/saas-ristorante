@@ -5,18 +5,12 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-interface CategoryItem {
-  id: string;
-  name: string;
-}
-
 interface Product {
   id: string;
   name: string;
   description: string;
   price: number;
-  category?: string;
-  category_id?: string | null;
+  category: string;
   image_url: string | null;
   is_available: boolean;
 }
@@ -38,7 +32,7 @@ export default function MenuPage() {
 
   const [restaurant, setRestaurant] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOwnerView, setIsOwnerView] = useState(false);
 
@@ -59,7 +53,7 @@ export default function MenuPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [category, setCategory] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -117,12 +111,12 @@ export default function MenuPage() {
   const fetchPublicData = async (restaurantId: string) => {
     const { data: catData } = await supabase
       .from('categories')
-      .select('id, name')
+      .select('*')
       .eq('restaurant_id', restaurantId);
 
-    const catList: CategoryItem[] = catData && catData.length > 0 
-      ? catData 
-      : [{ id: 'default', name: 'Antipasti' }];
+    const catList = catData && catData.length > 0 
+      ? catData.map((c: any) => c.name) 
+      : ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
     setCategories(catList);
 
     const { data: prodData } = await supabase
@@ -137,17 +131,15 @@ export default function MenuPage() {
   const fetchAdminData = async (restaurantId: string) => {
     const { data: catData } = await supabase
       .from('categories')
-      .select('id, name')
+      .select('*')
       .eq('restaurant_id', restaurantId);
 
-    const catList: CategoryItem[] = catData && catData.length > 0 
-      ? catData 
-      : [{ id: 'default', name: 'Antipasti' }];
+    const catList = catData && catData.length > 0 
+      ? catData.map((c: any) => c.name) 
+      : ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
       
     setCategories(catList);
-    if (catList.length > 0) {
-      setSelectedCategoryId(catList[0].id);
-    }
+    setCategory(catList[0] || 'Antipasti');
 
     const { data: prodData } = await supabase
       .from('products')
@@ -196,7 +188,10 @@ export default function MenuPage() {
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Protezione immediata da doppio invio
     if (submitting) return;
+    
     if (cart.length === 0 || !restaurant) return;
     if (!customerName || !customerPhone || !customerEmail || !pickupTime) {
       alert('Compila tutti i campi obbligatori, compreso l\'orario.');
@@ -253,7 +248,7 @@ export default function MenuPage() {
       setCart([]);
     } else {
       alert(`Errore invio ordine: ${error?.message}`);
-      setSubmitting(false);
+      setSubmitting(false); // Riattiva solo in caso di errore
     }
   };
 
@@ -262,7 +257,7 @@ export default function MenuPage() {
     setName('');
     setDescription('');
     setPrice('');
-    if (categories.length > 0) setSelectedCategoryId(categories[0].id);
+    setCategory(categories[0] || 'Antipasti');
     setImageFile(null);
     setImagePreview(null);
   };
@@ -270,37 +265,36 @@ export default function MenuPage() {
   const handleAddCategory = async () => {
     if (!newCatInput.trim() || !restaurant) return;
     const catName = newCatInput.trim();
-    if (categories.some(c => c.name.toLowerCase() === catName.toLowerCase())) return;
+    if (categories.includes(catName)) return;
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('categories')
-      .insert([{ restaurant_id: restaurant.id, name: catName }])
-      .select()
-      .single();
+      .insert([{ restaurant_id: restaurant.id, name: catName }]);
 
-    if (!error && data) {
-      const updated = [...categories, data];
+    if (!error) {
+      const updated = [...categories, catName];
       setCategories(updated);
-      setSelectedCategoryId(data.id);
+      setCategory(catName);
       setNewCatInput('');
     } else {
-      alert(`Errore aggiunta categoria: ${error?.message}`);
+      alert(`Errore aggiunta categoria: ${error.message}`);
     }
   };
 
-  const handleDeleteCategory = async (catId: string, catName: string) => {
-    if (!confirm(`Vuoi davvero eliminare la categoria "${catName}"?`)) return;
+  const handleDeleteCategory = async (catToDelete: string) => {
+    if (!confirm(`Vuoi davvero eliminare la categoria "${catToDelete}"?`)) return;
 
     const { error } = await supabase
       .from('categories')
       .delete()
-      .eq('id', catId);
+      .eq('restaurant_id', restaurant.id)
+      .eq('name', catToDelete);
 
     if (!error) {
-      const updated = categories.filter((c) => c.id !== catId);
+      const updated = categories.filter((c) => c !== catToDelete);
       setCategories(updated);
-      if (selectedCategoryId === catId && updated.length > 0) {
-        setSelectedCategoryId(updated[0].id);
+      if (category === catToDelete && updated.length > 0) {
+        setCategory(updated[0]);
       }
     } else {
       alert(`Errore eliminazione categoria: ${error.message}`);
@@ -312,7 +306,7 @@ export default function MenuPage() {
     setName(p.name);
     setDescription(p.description || '');
     setPrice(p.price.toString());
-    setSelectedCategoryId(p.category_id || categories[0]?.id || '');
+    setCategory(p.category || categories[0]);
     setImagePreview(p.image_url);
     setImageFile(null);
   };
@@ -349,15 +343,12 @@ export default function MenuPage() {
       if (uploadedUrl) imageUrl = uploadedUrl;
     }
 
-    const selectedCatObj = categories.find(c => c.id === selectedCategoryId);
-
     const payload: any = {
       restaurant_id: restaurant.id,
       name,
       description,
       price: parseFloat(price.replace(',', '.')),
-      category_id: selectedCategoryId || null,
-      category: selectedCatObj ? selectedCatObj.name : null,
+      category,
       image_url: imageUrl,
     };
 
@@ -428,8 +419,6 @@ export default function MenuPage() {
   }
 
   if (!isOwnerView) {
-    const isOrderingDisabled = restaurant.takeaway_enabled === false && restaurant.delivery_enabled === false;
-
     return (
       <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6 pb-24">
         <div className="max-w-3xl mx-auto space-y-6">
@@ -440,18 +429,12 @@ export default function MenuPage() {
 
           <div className="space-y-6">
             {categories.map((cat) => {
-              const catProducts = products.filter((p) => {
-                if (p.category_id) {
-                  return p.category_id === cat.id;
-                }
-                return (p.category || '').trim().toLowerCase() === cat.name.trim().toLowerCase();
-              });
-
+              const catProducts = products.filter((p) => (p.category || 'Antipasti') === cat);
               if (catProducts.length === 0) return null;
 
               return (
-                <div key={cat.id} className="space-y-3">
-                  <h2 className="text-sm font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
+                <div key={cat} className="space-y-3">
+                  <h2 className="text-sm font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat}</h2>
                   <div className="grid grid-cols-1 gap-3">
                     {catProducts.map((product) => (
                       <div key={product.id} className="bg-slate-800/80 p-4 rounded-xl border border-slate-700 flex justify-between items-center gap-4">
@@ -466,14 +449,12 @@ export default function MenuPage() {
                           </div>
                         </div>
 
-                        {!isOrderingDisabled && (
-                          <button
-                            onClick={() => addToCart(product)}
-                            className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap transition"
-                          >
-                            Aggiungi
-                          </button>
-                        )}
+                        <button
+                          onClick={() => addToCart(product)}
+                          className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap transition"
+                        >
+                          Aggiungi
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -516,6 +497,8 @@ export default function MenuPage() {
               </div>
 
               <form onSubmit={handleCheckout} className="space-y-4 pt-2">
+
+                {/* DATI CLIENTE */}
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">Nome e cognome *</label>
@@ -525,6 +508,7 @@ export default function MenuPage() {
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       placeholder="Inserisci il tuo nome e cognome"
+                      autoComplete="name"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
                   </div>
@@ -537,6 +521,7 @@ export default function MenuPage() {
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
                       placeholder="Inserisci il numero di telefono"
+                      autoComplete="tel"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
                   </div>
@@ -549,28 +534,25 @@ export default function MenuPage() {
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
                       placeholder="Inserisci la tua email"
+                      autoComplete="email"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
+                    <p className="text-[10px] text-slate-500 mt-1">Ti invieremo la conferma dell'ordine a questo indirizzo.</p>
                   </div>
                 </div>
 
+                {/* TIPO ORDINE + ORARIO ORDINI */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">Modalità di ordine</label>
-                    {isOrderingDisabled ? (
-                      <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-lg text-center font-bold text-[11px] uppercase tracking-wide">
-                        ASPORTO NON DISPONIBILE SU QUESTA PIATTAFORMA
-                      </div>
-                    ) : (
-                      <select
-                        value={orderType}
-                        onChange={(e) => setOrderType(e.target.value as 'takeaway' | 'delivery')}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
-                      >
-                        {restaurant.takeaway_enabled !== false && <option value="takeaway">Ritiro in sede (Asporto)</option>}
-                        {restaurant.delivery_enabled !== false && <option value="delivery">Consegna a domicilio</option>}
-                      </select>
-                    )}
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Tipo di ordine</label>
+                    <select
+                      value={orderType}
+                      onChange={(e) => setOrderType(e.target.value as 'takeaway' | 'delivery')}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="takeaway">Ritiro in sede (Asporto)</option>
+                      <option value="delivery">Consegna a domicilio</option>
+                    </select>
                   </div>
 
                   <div>
@@ -589,6 +571,7 @@ export default function MenuPage() {
                   </div>
                 </div>
 
+                {/* NOTE */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Note</label>
                   <textarea
@@ -600,13 +583,15 @@ export default function MenuPage() {
                   />
                 </div>
 
+                {/* PULSANTE */}
                 <button
                   type="submit"
-                  disabled={submitting || isOrderingDisabled}
-                  className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-900 font-bold p-3 rounded-lg text-xs transition uppercase tracking-wider"
+                  disabled={submitting}
+                  className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold p-3 rounded-lg text-xs transition uppercase tracking-wider"
                 >
                   {submitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
                 </button>
+
               </form>
             </div>
           )}
@@ -620,6 +605,7 @@ export default function MenuPage() {
     <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         
+        {/* Header con pulsante di ritorno uniformato */}
         <header className="flex justify-between items-center bg-slate-800 p-5 rounded-xl border border-slate-700">
           <div>
             <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Gestione Carta</span>
@@ -650,10 +636,10 @@ export default function MenuPage() {
 
           <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-700/60">
             {categories.map((cat) => (
-              <div key={cat.id} className="flex items-center gap-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">
-                <span className="text-white">{cat.name}</span>
+              <div key={cat} className="flex items-center gap-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">
+                <span className="text-white">{cat}</span>
                 <button
-                  onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                  onClick={() => handleDeleteCategory(cat)}
                   className="text-rose-400 hover:text-rose-200 font-bold ml-1 px-1 transition"
                   title="Elimina categoria"
                 >
@@ -687,12 +673,12 @@ export default function MenuPage() {
             />
 
             <select
-              value={selectedCategoryId}
-              onChange={(e) => setSelectedCategoryId(e.target.value)}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
               className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-xs focus:outline-none focus:border-amber-500"
             >
               {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c} value={c}>{c}</option>
               ))}
             </select>
 
@@ -744,20 +730,14 @@ export default function MenuPage() {
         </form>
 
         <div className="space-y-6">
-          {categories.map((cat) => {
-            const catProducts = products.filter((p) => {
-              if (p.category_id) {
-                return p.category_id === cat.id;
-              }
-              return (p.category || '').trim().toLowerCase() === cat.name.trim().toLowerCase();
-            });
-
+          {categories.map((catName) => {
+            const catProducts = products.filter((p) => (p.category || 'Antipasti') === catName);
             if (catProducts.length === 0) return null;
 
             return (
-              <div key={cat.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden space-y-1">
+              <div key={catName} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden space-y-1">
                 <div className="p-4 bg-slate-800/80 border-b border-slate-700 font-bold text-amber-400 text-sm uppercase tracking-wider flex justify-between">
-                  <span>{cat.name}</span>
+                  <span>{catName}</span>
                   <span className="text-xs text-slate-400">({catProducts.length} piatti)</span>
                 </div>
 

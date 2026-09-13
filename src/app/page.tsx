@@ -4,12 +4,17 @@ import { useEffect, useState, Suspense } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useSearchParams } from 'next/navigation';
 
+interface CategoryItem {
+  id: string;
+  name: string;
+}
+
 function PublicPageContent() {
   const searchParams = useSearchParams();
   const initialAction = searchParams.get('action');
 
   const [restaurant, setRestaurant] = useState<any>(null);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
   const [discountRules, setDiscountRules] = useState<any[]>([]);
@@ -87,14 +92,31 @@ function PublicPageContent() {
           } else {
             setResTime('19:00');
           }
+
+          // Caricamento categorie collegate al ristorante
+          const { data: catData } = await supabase
+            .from('categories')
+            .select('id, name')
+            .eq('restaurant_id', restData.id);
+
+          if (catData && catData.length > 0) {
+            setCategories(catData);
+          } else {
+            // Fallback se non ci sono categorie salvate
+            setCategories([
+              { id: '1', name: 'Antipasti' },
+              { id: '2', name: 'Primi' },
+              { id: '3', name: 'Secondi' },
+              { id: '4', name: 'Pizza' },
+              { id: '5', name: 'Dolci' },
+              { id: '6', name: 'Bevande' }
+            ]);
+          }
         }
 
         if (prodRes.status === 'fulfilled' && prodRes.value.data) {
           setProducts(prodRes.value.data);
         }
-
-        const catList = restData?.custom_categories || ["Antipasti", "Primi", "Secondi", "Pizza", "Dolci", "Bevande"];
-        setCategories(catList);
 
         if (promoRes.status === 'fulfilled' && promoRes.value.data) {
           setPromotions(promoRes.value.data);
@@ -160,9 +182,14 @@ function PublicPageContent() {
     return /^\d{10,15}$/.test(cleanPhone);
   };
 
+  const allowTakeaway = restaurant?.allow_takeaway ?? restaurant?.takeaway_enabled ?? true;
+  const allowDelivery = restaurant?.allow_delivery ?? restaurant?.delivery_enabled ?? true;
+  const isOrderingDisabled = !allowTakeaway && !allowDelivery;
+  const allowReservations = restaurant?.allow_reservations ?? true;
+
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    if (isSubmitting || isOrderingDisabled) return;
     if (Object.keys(cart).length === 0) { alert('Il carrello è vuoto!'); return; }
 
     if (!isValidPhone(customerPhone)) {
@@ -175,22 +202,6 @@ function PublicPageContent() {
     setIsSubmitting(true);
 
     try {
-      const fifteenSecondsAgo = new Date(Date.now() - 15 * 1000).toISOString();
-      const { data: existingCheck } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('restaurant_id', restaurant?.id)
-        .eq('customer_name', customerName)
-        .eq('customer_phone', customerPhone)
-        .gte('created_at', fifteenSecondsAgo)
-        .maybeSingle();
-
-      if (existingCheck) {
-        setIsSubmitting(false);
-        alert('Hai già inviato questo ordine pocanzi!');
-        return;
-      }
-
       const formattedItems = Object.values(cart).map((c) => ({
         name: c.product.name,
         quantity: c.quantity,
@@ -286,23 +297,6 @@ function PublicPageContent() {
     setIsSubmitting(true);
 
     try {
-      const fifteenSecondsAgo = new Date(Date.now() - 15 * 1000).toISOString();
-      const { data: existingCheck } = await supabase
-        .from('reservations')
-        .select('id')
-        .eq('restaurant_id', restaurant?.id)
-        .eq('customer_name', customerName)
-        .eq('reservation_date', resDate)
-        .eq('reservation_time', resTime)
-        .gte('created_at', fifteenSecondsAgo)
-        .maybeSingle();
-
-      if (existingCheck) {
-        setIsSubmitting(false);
-        alert('Hai già inviato questa prenotazione pocanzi!');
-        return;
-      }
-
       const rwgToken = searchParams.get('rwg_token');
       const reservationNotesPayload = `${resNotes || ''}${rwgToken ? ` (Ref: rwg_token)` : ''}`;
 
@@ -407,10 +401,6 @@ function PublicPageContent() {
       setResTime(reservationTimeSlots[0]);
     }
   }, [resDate, reservationTimeSlots, resTime]);
-
-  const allowTakeaway = restaurant?.allow_takeaway ?? true;
-  const allowDelivery = restaurant?.allow_delivery ?? true;
-  const allowReservations = restaurant?.allow_reservations ?? true;
 
   if (loading) return <div className="bg-slate-900 min-h-screen text-slate-400 p-8 text-xs">Caricamento...</div>;
 
@@ -619,16 +609,20 @@ function PublicPageContent() {
             <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-amber-500 uppercase tracking-wide">Modalità di Ordine:</span>
-                <select
-                  value={orderType}
-                  onChange={(e) => setOrderType(e.target.value as any)}
-                  className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-semibold focus:outline-none focus:border-amber-500"
-                >
-                  <option value="takeaway" disabled={!allowTakeaway}>Ritiro d'asporto</option>
-                  <option value="delivery" disabled={!allowDelivery}>Consegna a domicilio</option>
-                </select>
+                {isOrderingDisabled ? (
+                  <span className="text-red-400 font-black uppercase text-[11px]">Non disponibile</span>
+                ) : (
+                  <select
+                    value={orderType}
+                    onChange={(e) => setOrderType(e.target.value as any)}
+                    className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-semibold focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="takeaway" disabled={!allowTakeaway}>Ritiro d'asporto</option>
+                    <option value="delivery" disabled={!allowDelivery}>Consegna a domicilio</option>
+                  </select>
+                )}
               </div>
-              {orderType === 'delivery' && (
+              {orderType === 'delivery' && !isOrderingDisabled && (
                 <p className="text-[11px] text-slate-400">
                   {deliveryFee > 0
                     ? `Costo di consegna: €${deliveryFee.toFixed(2)} (aggiunto al totale)`
@@ -637,16 +631,19 @@ function PublicPageContent() {
               )}
             </div>
 
-            {categories.map((catName) => {
-              const catProducts = products.filter((p) => 
-                p.category && p.category.trim().toLowerCase() === catName.trim().toLowerCase()
-              );
+            {categories.map((cat) => {
+              const catProducts = products.filter((p) => {
+                if (p.category_id) {
+                  return p.category_id === cat.id;
+                }
+                return (p.category || '').trim().toLowerCase() === cat.name.trim().toLowerCase();
+              });
               
               if (catProducts.length === 0) return null;
 
               return (
-                <div key={catName} className="space-y-3">
-                  <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{catName}</h2>
+                <div key={cat.id} className="space-y-3">
+                  <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider border-b border-slate-800 pb-1">{cat.name}</h2>
                   <div className="space-y-2">
                     {catProducts.map((product) => {
                       const cartItem = cart[product.id];
@@ -667,31 +664,33 @@ function PublicPageContent() {
                             <span className="font-mono text-amber-400 font-bold text-xs">€{Number(product.price).toFixed(2)}</span>
                           </div>
 
-                          {quantity > 0 ? (
-                            <div className="flex items-center gap-1.5 shrink-0 bg-slate-900 border border-slate-700 rounded-lg p-1">
+                          {!isOrderingDisabled && (
+                            quantity > 0 ? (
+                              <div className="flex items-center gap-1.5 shrink-0 bg-slate-900 border border-slate-700 rounded-lg p-1">
+                                <button
+                                  type="button"
+                                  onClick={() => updateQuantity(product.id, -1)}
+                                  className="bg-slate-800 hover:bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold text-xs"
+                                >
+                                  -
+                                </button>
+                                <span className="font-bold text-xs px-1.5 text-amber-400 font-mono">{quantity}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => updateQuantity(product.id, 1)}
+                                  className="bg-slate-800 hover:bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold text-xs"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
                               <button
-                                type="button"
-                                onClick={() => updateQuantity(product.id, -1)}
-                                className="bg-slate-800 hover:bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold text-xs"
+                                onClick={() => addToCart(product)}
+                                className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
                               >
-                                -
+                                Aggiungi
                               </button>
-                              <span className="font-bold text-xs px-1.5 text-amber-400 font-mono">{quantity}</span>
-                              <button
-                                type="button"
-                                onClick={() => updateQuantity(product.id, 1)}
-                                className="bg-slate-800 hover:bg-slate-700 text-white w-6 h-6 rounded flex items-center justify-center font-bold text-xs"
-                              >
-                                +
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => addToCart(product)}
-                              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shrink-0"
-                            >
-                              Aggiungi
-                            </button>
+                            )
                           )}
                         </div>
                       );
@@ -824,13 +823,19 @@ function PublicPageContent() {
                     rows={2}
                   />
 
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg text-xs uppercase"
-                  >
-                    {isSubmitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
-                  </button>
+                  {isOrderingDisabled ? (
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-lg text-center font-black text-xs uppercase tracking-wide">
+                      ASPORTO NON DISPONIBILE SU QUESTA PIATTAFORMA
+                    </div>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 rounded-lg text-xs uppercase"
+                    >
+                      {isSubmitting ? 'Invio in corso...' : 'Conferma ed Invia Ordine'}
+                    </button>
+                  )}
                 </div>
               </form>
             )}
@@ -886,7 +891,6 @@ function PublicPageContent() {
               </select>
             </div>
 
-            {/* SEZIONE NUMERO PERSONE A TENDINA */}
             <div className="space-y-1">
               <label className="block text-[11px] font-semibold text-slate-300">Numero persone *</label>
               <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-lg p-2.5">
