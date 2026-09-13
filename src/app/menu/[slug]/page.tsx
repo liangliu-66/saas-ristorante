@@ -189,7 +189,6 @@ export default function MenuPage() {
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Protezione immediata da doppio invio
     if (submitting) return;
     
     if (cart.length === 0 || !restaurant) return;
@@ -248,7 +247,7 @@ export default function MenuPage() {
       setCart([]);
     } else {
       alert(`Errore invio ordine: ${error?.message}`);
-      setSubmitting(false); // Riattiva solo in caso di errore
+      setSubmitting(false);
     }
   };
 
@@ -419,6 +418,8 @@ export default function MenuPage() {
   }
 
   if (!isOwnerView) {
+    const isOrderingDisabled = restaurant.takeaway_enabled === false && restaurant.delivery_enabled === false;
+
     return (
       <div className="min-h-screen bg-slate-900 text-white p-4 sm:p-6 pb-24">
         <div className="max-w-3xl mx-auto space-y-6">
@@ -427,9 +428,16 @@ export default function MenuPage() {
             <p className="text-xs text-slate-400">{restaurant.description || 'Menu digitale e ordini d\'asporto'}</p>
           </div>
 
+          {/* AVVISO DISABILITAZIONE ASPORTO / CONSEGNA */}
+          {isOrderingDisabled ? (
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-6 rounded-xl text-center font-black text-sm tracking-wider shadow-lg">
+              ASPORTO NON DISPONIBILE SU QUESTA PIATTAFORMA
+            </div>
+          ) : null}
+
           <div className="space-y-6">
             {categories.map((cat) => {
-              const catProducts = products.filter((p) => (p.category || 'Antipasti') === cat);
+              const catProducts = products.filter((p) => p.category === cat);
               if (catProducts.length === 0) return null;
 
               return (
@@ -449,12 +457,14 @@ export default function MenuPage() {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => addToCart(product)}
-                          className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap transition"
-                        >
-                          Aggiungi
-                        </button>
+                        {!isOrderingDisabled && (
+                          <button
+                            onClick={() => addToCart(product)}
+                            className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap transition"
+                          >
+                            Aggiungi
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -463,7 +473,7 @@ export default function MenuPage() {
             })}
           </div>
 
-          {cart.length > 0 && (
+          {!isOrderingDisabled && cart.length > 0 && (
             <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4 sticky bottom-4 shadow-xl">
               <h2 className="text-sm font-bold text-amber-500 uppercase tracking-wider">Riepilogo Ordine</h2>
               
@@ -550,8 +560,8 @@ export default function MenuPage() {
                       onChange={(e) => setOrderType(e.target.value as 'takeaway' | 'delivery')}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-amber-500"
                     >
-                      <option value="takeaway">Ritiro in sede (Asporto)</option>
-                      <option value="delivery">Consegna a domicilio</option>
+                      {restaurant.takeaway_enabled !== false && <option value="takeaway">Ritiro in sede (Asporto)</option>}
+                      {restaurant.delivery_enabled !== false && <option value="delivery">Consegna a domicilio</option>}
                     </select>
                   </div>
 
@@ -731,7 +741,7 @@ export default function MenuPage() {
 
         <div className="space-y-6">
           {categories.map((catName) => {
-            const catProducts = products.filter((p) => (p.category || 'Antipasti') === catName);
+            const catProducts = products.filter((p) => p.category === catName);
             if (catProducts.length === 0) return null;
 
             return (
