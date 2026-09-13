@@ -158,7 +158,6 @@ export default function MenuPage() {
 
     let cats: CategoryItem[] = catData || [];
     
-    // Assicura l'esistenza della categoria TRASH per l'admin
     if (!cats.some(c => c.name === 'TRASH')) {
       const { data: trashIns } = await supabase
         .from('categories')
@@ -303,7 +302,6 @@ export default function MenuPage() {
     }
   };
 
-  // ELIMINAZIONE CATEGORIA CON SPOSTAMENTO DEI PIATTI IN TRASH
   const handleDeleteCategory = async (catId: string, catName: string) => {
     if (catName === 'TRASH') {
       alert('Non puoi eliminare la categoria TRASH.');
@@ -427,7 +425,6 @@ export default function MenuPage() {
     setSaving(false);
   };
 
-  // SALVATAGGIO MODIFICA INLINE PIATTO
   const handleSaveInlineEdit = async (productId: string) => {
     let imageUrl = editProdImagePreview;
     if (editProdImageFile) {
@@ -705,13 +702,13 @@ export default function MenuPage() {
           </Link>
         </header>
 
-        {/* GESTIONE CATEGORIE CON PULSANTE TRASH E RIORDINO */}
-        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4">
+        {/* GESTIONE CATEGORIE COMPATTA (GRIGLIA MULTICOLONNA) */}
+        <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-3">
           <div className="flex justify-between items-center border-b border-slate-700 pb-2">
-            <h2 className="text-sm font-bold text-amber-500 uppercase">Gestione Categorie Menu</h2>
+            <h2 className="text-xs font-bold text-amber-500 uppercase tracking-wider">Gestione Categorie Menu</h2>
             <button
               onClick={() => setShowTrashView(!showTrashView)}
-              className={`text-xs px-3 py-1.5 rounded font-bold border transition ${
+              className={`text-[11px] px-2.5 py-1 rounded font-bold border transition ${
                 showTrashView ? 'bg-amber-500 text-slate-900 border-amber-500' : 'bg-slate-900 text-amber-400 border-slate-700 hover:bg-slate-700'
               }`}
             >
@@ -725,40 +722,40 @@ export default function MenuPage() {
               placeholder="Crea nuova categoria..."
               value={newCatInput}
               onChange={(e) => setNewCatInput(e.target.value)}
-              className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white flex-1 focus:outline-none focus:border-amber-500"
+              className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white flex-1 focus:outline-none focus:border-amber-500"
             />
             <button
               onClick={handleAddCategory}
-              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap transition"
+              className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold text-xs px-3 py-2 rounded-lg whitespace-nowrap transition"
             >
-              + Aggiungi Categoria
+              + Aggiungi
             </button>
           </div>
 
-          <div className="space-y-2 pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1">
             {categories.filter(c => c.name !== 'TRASH').map((cat, index, arr) => (
-              <div key={cat.id} className="flex items-center justify-between bg-slate-900 border border-slate-700 px-3 py-2 rounded-lg text-xs font-semibold">
+              <div key={cat.id} className="flex items-center justify-between bg-slate-900 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold gap-1">
                 {editingCatId === cat.id ? (
-                  <div className="flex items-center gap-2 flex-1 mr-2">
+                  <div className="flex items-center gap-1 flex-1">
                     <input
                       type="text"
                       value={editingCatName}
                       onChange={(e) => setEditingCatName(e.target.value)}
                       className="bg-slate-800 border border-amber-500 rounded p-1 text-white flex-1 text-xs"
                     />
-                    <button onClick={() => handleUpdateCategory(cat.id)} className="bg-emerald-600 text-white px-2.5 py-1 rounded font-bold">Salva</button>
-                    <button onClick={() => setEditingCatId(null)} className="bg-slate-700 text-white px-2.5 py-1 rounded">Annulla</button>
+                    <button onClick={() => handleUpdateCategory(cat.id)} className="bg-emerald-600 text-white px-2 py-1 rounded font-bold text-[10px]">OK</button>
+                    <button onClick={() => setEditingCatId(null)} className="bg-slate-700 text-white px-2 py-1 rounded text-[10px]">✕</button>
                   </div>
                 ) : (
-                  <span className="text-white">{cat.name}</span>
+                  <span className="text-white truncate flex-1" title={cat.name}>{cat.name}</span>
                 )}
 
                 {editingCatId !== cat.id && (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => handleMoveCategoryOrder(index, 'up')}
                       disabled={index === 0}
-                      className="bg-slate-800 hover:bg-slate-700 disabled:opacity-30 p-1 rounded text-[10px]"
+                      className="bg-slate-800 hover:bg-slate-700 disabled:opacity-20 px-1.5 py-0.5 rounded text-[10px]"
                       title="Sposta su"
                     >
                       ▲
@@ -766,21 +763,21 @@ export default function MenuPage() {
                     <button
                       onClick={() => handleMoveCategoryOrder(index, 'down')}
                       disabled={index === arr.length - 1}
-                      className="bg-slate-800 hover:bg-slate-700 disabled:opacity-30 p-1 rounded text-[10px]"
+                      className="bg-slate-800 hover:bg-slate-700 disabled:opacity-20 px-1.5 py-0.5 rounded text-[10px]"
                       title="Sposta giù"
                     >
                       ▼
                     </button>
                     <button
                       onClick={() => { setEditingCatId(cat.id); setEditingCatName(cat.name); }}
-                      className="bg-slate-700 hover:bg-slate-600 text-amber-400 px-2.5 py-1 rounded font-bold"
+                      className="bg-slate-700 hover:bg-slate-600 text-amber-400 px-2 py-0.5 rounded font-bold text-[10px]"
                     >
                       Modifica
                     </button>
                     <button
                       onClick={() => handleDeleteCategory(cat.id, cat.name)}
-                      className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 px-2.5 py-1 rounded font-bold"
-                      title="Elimina categoria"
+                      className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 px-2 py-0.5 rounded font-bold text-[10px]"
+                      title="Elimina"
                     >
                       ✕
                     </button>
